@@ -160,6 +160,14 @@
   display: none;
 }
 
+.phone-content > .fixed {
+  position: absolute;
+}
+
+.phone-content > .fixed > .max-w-\[420px\] {
+  max-width: 100%;
+}
+
 .bottom-tabs {
   box-shadow: 0 -10px 24px oklch(0.18 0.02 260 / 0.05);
 }
