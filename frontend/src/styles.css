@@ -129,7 +129,8 @@
   }
 
   html,
-  body {
+  body,
+  #root {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family:
@@ -137,12 +138,26 @@
       "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     letter-spacing: -0.01em;
+    min-height: 100%;
+    margin: 0;
+  }
+
+  body {
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  #root {
+    width: 100%;
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
   }
 }
 
 /* Mobile frame */
 .phone-frame {
-  width: 100%;
+  width: min(100vw, 420px);
   max-width: 420px;
   height: 100dvh;
   margin: 0 auto;
@@ -160,22 +175,30 @@
   display: none;
 }
 
-.phone-content > .fixed {
+.phone-page {
+  min-height: 100%;
+}
+
+.phone-content .fixed {
   position: absolute;
 }
 
-.phone-content > .fixed > .max-w-\[420px\] {
+.phone-content .fixed > .max-w-\[420px\] {
   max-width: 100%;
 }
 
 .bottom-tabs {
+  height: calc(72px + env(safe-area-inset-bottom));
+  min-height: 72px;
   box-shadow: 0 -10px 24px oklch(0.18 0.02 260 / 0.05);
 }
 
 @media (min-width: 640px) {
   .phone-frame {
-    height: min(880px, calc(100dvh - 48px));
-    min-height: 680px;
+    width: min(420px, calc((100dvh - 48px) * 9 / 19.5));
+    height: auto;
+    min-height: unset;
+    aspect-ratio: 9 / 19.5;
     margin-top: 24px;
     margin-bottom: 24px;
     border-radius: 2.5rem;
@@ -187,9 +210,5 @@
   }
   body {
     background: linear-gradient(135deg, oklch(0.95 0.02 250), oklch(0.92 0.04 270));
-    min-height: 100dvh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 }

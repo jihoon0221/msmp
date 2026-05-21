@@ -12,7 +12,7 @@ export function PhoneShell({
   return (
     <div className="phone-frame flex flex-col">
       <main className="phone-content relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {children}
+        <div className="phone-page relative flex min-h-full flex-col pb-5">{children}</div>
       </main>
       {showTabs && <BottomTabs />}
     </div>
@@ -30,7 +30,7 @@ function BottomTabs() {
 
   return (
     <nav className="bottom-tabs shrink-0 bg-surface/95 backdrop-blur border-t border-border">
-      <div className="grid grid-cols-4 px-2 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+      <div className="grid h-full grid-cols-4 px-2 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
         {tabs.map(({ to, label, icon: Icon }) => {
           const active =
             pathname === to || (to === "/recommendation" && pathname === "/explanation");
