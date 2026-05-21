@@ -144,17 +144,30 @@
 .phone-frame {
   width: 100%;
   max-width: 420px;
-  min-height: 100dvh;
+  height: 100dvh;
   margin: 0 auto;
   background: var(--color-background);
   position: relative;
-  overflow-x: hidden;
+  overflow: hidden;
+}
+
+.phone-content {
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.phone-content::-webkit-scrollbar {
+  display: none;
+}
+
+.bottom-tabs {
+  box-shadow: 0 -10px 24px oklch(0.18 0.02 260 / 0.05);
 }
 
 @media (min-width: 640px) {
   .phone-frame {
-    min-height: 880px;
-    max-height: 920px;
+    height: min(880px, calc(100dvh - 48px));
+    min-height: 680px;
     margin-top: 24px;
     margin-bottom: 24px;
     border-radius: 2.5rem;
