@@ -4,6 +4,12 @@ import { ArrowRight, TrendingUp, Heart, Wallet, Sparkles } from "lucide-react";
 
 type Search = { income?: string; expense?: string; assets?: string; debt?: string };
 
+const clampMoney = (value: string | undefined, fallback: number) => {
+  const number = Number(value ?? fallback);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(9999999, Math.max(0, Math.round(number)));
+};
+
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
@@ -22,10 +28,10 @@ export const Route = createFileRoute("/dashboard")({
 
 function Dashboard() {
   const { income, expense, assets, debt } = Route.useSearch();
-  const inc = Number(income ?? 320);
-  const exp = Number(expense ?? 180);
-  const ast = Number(assets ?? 1500);
-  const dbt = Number(debt ?? 300);
+  const inc = clampMoney(income, 320);
+  const exp = clampMoney(expense, 180);
+  const ast = clampMoney(assets, 1500);
+  const dbt = clampMoney(debt, 300);
 
   const net = ast - dbt;
   const investable = Math.max(0, Math.round((inc - exp) * 0.7));
@@ -49,7 +55,7 @@ function Dashboard() {
       <header className="px-5 pt-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <Sparkles size={16} className="text-primary" />
+            <Sparkles size={16} className="shrink-0 text-primary" />
             <span className="text-sm font-bold tracking-tight">머니 파일럿</span>
           </div>
         </div>
@@ -60,7 +66,7 @@ function Dashboard() {
       {/* Net worth hero */}
       <section className="mx-5 mt-5 bg-gradient-to-br from-primary to-[oklch(0.55_0.22_265)] text-primary-foreground rounded-3xl p-6 shadow-lg shadow-primary/20">
         <p className="text-sm opacity-90">내 순자산</p>
-        <p className="text-[32px] font-bold mt-1 tracking-tight">
+        <p className="text-[32px] font-bold mt-1 tracking-tight break-words">
           {net.toLocaleString()}
           <span className="text-lg font-semibold ml-1 opacity-90">만원</span>
         </p>
@@ -113,25 +119,25 @@ function Dashboard() {
       <section className="mx-5 mt-4 space-y-3">
         <Link
           to="/goals"
-          className="flex items-center justify-between bg-surface border border-border rounded-2xl p-5 active:bg-secondary"
+          className="flex items-center justify-between gap-3 bg-surface border border-border rounded-2xl p-5 active:bg-secondary"
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-primary font-semibold">🎯 다음 단계</p>
-            <p className="font-semibold mt-1">재무 목표 설정하기</p>
+            <p className="truncate font-semibold mt-1">재무 목표 설정하기</p>
             <p className="text-xs text-muted-foreground mt-0.5">목표를 정하면 더 정확해져요</p>
           </div>
-          <ArrowRight size={20} className="text-muted-foreground" />
+          <ArrowRight size={20} className="shrink-0 text-muted-foreground" />
         </Link>
         <Link
           to="/recommendation"
-          className="flex items-center justify-between bg-primary-soft border border-primary/20 rounded-2xl p-5"
+          className="flex items-center justify-between gap-3 bg-primary-soft border border-primary/20 rounded-2xl p-5"
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-primary font-semibold">✨ AI 추천</p>
-            <p className="font-semibold mt-1">나만의 포트폴리오 받기</p>
+            <p className="truncate font-semibold mt-1">나만의 포트폴리오 받기</p>
             <p className="text-xs text-muted-foreground mt-0.5">AI가 분석한 자산 배분</p>
           </div>
-          <ArrowRight size={20} className="text-primary" />
+          <ArrowRight size={20} className="shrink-0 text-primary" />
         </Link>
       </section>
     </PhoneShell>
@@ -142,7 +148,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-white/15 backdrop-blur rounded-xl px-3 py-2.5">
       <p className="text-[11px] opacity-80">{label}</p>
-      <p className="font-bold mt-0.5">{value}</p>
+      <p className="truncate font-bold mt-0.5">{value}</p>
     </div>
   );
 }
@@ -152,9 +158,9 @@ function Card({ icon, label, value }: { icon: React.ReactNode; label: string; va
     <div className="bg-surface border border-border rounded-2xl p-4">
       <div className="flex items-center gap-1.5">
         {icon}
-        <p className="text-xs text-muted-foreground font-medium">{label}</p>
+        <p className="min-w-0 truncate text-xs text-muted-foreground font-medium">{label}</p>
       </div>
-      <p className="text-lg font-bold mt-2">{value}</p>
+      <p className="truncate text-lg font-bold mt-2">{value}</p>
     </div>
   );
 }

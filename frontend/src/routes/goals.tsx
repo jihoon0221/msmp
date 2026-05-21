@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import {
   loadGoals,
+  normalizeGoal,
   saveGoals,
   subscribeGoals,
   type Goal,
@@ -90,8 +91,8 @@ export function Goals() {
           <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
             <Sparkles size={18} />
           </div>
-          <div className="flex-1">
-            <p className="font-semibold text-sm">목표 기반 AI 추천 받기</p>
+          <div className="flex-1 min-w-0">
+            <p className="truncate font-semibold text-sm">목표 기반 AI 추천 받기</p>
             <p className="text-xs text-muted-foreground">목표에 맞춘 자산 배분을 알려드려요</p>
           </div>
         </Link>
@@ -129,9 +130,12 @@ function GoalCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const pct = Math.min(100, Math.round((goal.saved / goal.target) * 100));
-  const remain = Math.max(0, goal.target - goal.saved);
-  const monthly = Math.ceil(remain / goal.months);
+  const target = Math.max(1, goal.target);
+  const saved = Math.max(0, Math.min(goal.saved, target));
+  const months = Math.max(1, goal.months);
+  const pct = Math.min(100, Math.round((saved / target) * 100));
+  const remain = Math.max(0, target - saved);
+  const monthly = Math.ceil(remain / months);
   const prColor =
     goal.priority === "높음"
       ? "bg-primary-soft text-primary"
@@ -142,18 +146,18 @@ function GoalCard({
   return (
     <div className="bg-surface border border-border rounded-2xl p-5">
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-secondary flex items-center justify-center text-2xl">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-11 h-11 rounded-xl bg-secondary flex shrink-0 items-center justify-center text-2xl">
             {goal.emoji}
           </div>
-          <div>
-            <p className="font-semibold">{goal.title}</p>
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{goal.title}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {goal.months}개월 안에 {goal.target.toLocaleString()}만원
+              {months}개월 안에 {target.toLocaleString()}만원
             </p>
           </div>
         </div>
-        <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${prColor}`}>
+        <span className={`shrink-0 text-[11px] font-semibold px-2 py-1 rounded-full ${prColor}`}>
           {goal.priority}
         </span>
       </div>
@@ -162,7 +166,7 @@ function GoalCard({
         <div className="flex items-baseline justify-between mb-1.5">
           <span className="text-sm font-semibold text-primary">{pct}%</span>
           <span className="text-xs text-muted-foreground">
-            {goal.saved.toLocaleString()} / {goal.target.toLocaleString()}만원
+            {saved.toLocaleString()} / {target.toLocaleString()}만원
           </span>
         </div>
         <div className="h-2 bg-secondary rounded-full overflow-hidden">
@@ -217,12 +221,8 @@ function EditGoalSheet({
   const emojiOptions = ["🏠", "☂️", "✈️", "💍", "🚗", "🎓", "👵", "🚀", "📚", "👶", "🎁", "⭐"];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-foreground/40" />
-      <div
-        className="relative w-full max-w-[420px] bg-surface rounded-t-3xl p-6 pb-10 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <SheetOverlay onClose={onClose}>
+      <BottomSheetPanel>
         <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-5" />
         <h2 className="text-xl font-bold">목표 수정하기</h2>
         <p className="text-sm text-muted-foreground mt-1">목표 정보를 자유롭게 변경하세요</p>
@@ -294,23 +294,25 @@ function EditGoalSheet({
           </button>
           <button
             onClick={() =>
-              onSave({
-                ...goal,
-                emoji,
-                title: title || goal.title,
-                target: Number(target) || 0,
-                saved: Number(saved) || 0,
-                months: Number(months) || 1,
-                priority,
-              })
+              onSave(
+                normalizeGoal({
+                  ...goal,
+                  emoji,
+                  title,
+                  target: Number(target),
+                  saved: Number(saved),
+                  months: Number(months),
+                  priority,
+                }),
+              )
             }
             className="flex-[2] bg-primary text-primary-foreground font-semibold py-4 rounded-2xl"
           >
             변경사항 저장
           </button>
         </div>
-      </div>
-    </div>
+      </BottomSheetPanel>
+    </SheetOverlay>
   );
 }
 
@@ -324,8 +326,7 @@ function ConfirmDeleteDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onCancel}>
-      <div className="absolute inset-0 bg-foreground/40" />
+    <SheetOverlay onClose={onCancel} center>
       <div
         className="relative w-full max-w-[360px] bg-surface rounded-3xl p-6 animate-in zoom-in-95"
         onClick={(e) => e.stopPropagation()}
@@ -356,7 +357,7 @@ function ConfirmDeleteDialog({
           </button>
         </div>
       </div>
-    </div>
+    </SheetOverlay>
   );
 }
 
@@ -516,12 +517,8 @@ function NewGoalSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (g: Goal
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-foreground/40" />
-      <div
-        className="relative w-full max-w-[420px] bg-surface rounded-t-3xl p-6 pb-10 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <SheetOverlay onClose={onClose}>
+      <BottomSheetPanel>
         <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-5" />
         <h2 className="text-xl font-bold">새 목표 만들기</h2>
         <p className="text-sm text-muted-foreground mt-1">자주 쓰는 목표 중에 골라보세요</p>
@@ -599,22 +596,55 @@ function NewGoalSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (g: Goal
 
         <button
           onClick={() =>
-            onAdd({
-              id: Date.now().toString(),
-              emoji,
-              title: title || "새 목표",
-              target: Number(target) || 0,
-              saved: 0,
-              months: Number(months) || 1,
-              priority,
-              goalType: isCustom ? undefined : goalType,
-            })
+            onAdd(
+              normalizeGoal({
+                id: Date.now().toString(),
+                emoji,
+                title,
+                target: Number(target),
+                saved: 0,
+                months: Number(months),
+                priority,
+                goalType: isCustom ? undefined : goalType,
+              }),
+            )
           }
           className="w-full bg-primary text-primary-foreground font-semibold py-4 rounded-2xl mt-5"
         >
           목표 추가하기
         </button>
-      </div>
+      </BottomSheetPanel>
+    </SheetOverlay>
+  );
+}
+
+function SheetOverlay({
+  children,
+  onClose,
+  center = false,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  center?: boolean;
+}) {
+  return (
+    <div
+      className={`absolute inset-0 z-50 flex justify-center ${center ? "items-center px-6" : "items-end"}`}
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-foreground/40" />
+      {children}
+    </div>
+  );
+}
+
+function BottomSheetPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="bottom-sheet-panel relative w-full bg-surface rounded-t-3xl p-6 pb-10 overflow-y-auto animate-in slide-in-from-bottom"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
     </div>
   );
 }
@@ -637,6 +667,7 @@ function SheetField({
         inputMode={numeric ? "numeric" : "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        maxLength={numeric ? 6 : 32}
         className="block w-full bg-transparent text-base font-semibold outline-none mt-0.5"
       />
     </label>

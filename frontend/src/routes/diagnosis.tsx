@@ -96,7 +96,8 @@ function Field({
           inputMode="numeric"
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))}
-          className="flex-1 bg-transparent text-xl font-bold outline-none placeholder:text-muted-foreground/50"
+          maxLength={7}
+          className="min-w-0 flex-1 bg-transparent text-xl font-bold outline-none placeholder:text-muted-foreground/50"
           placeholder="0"
         />
         <span className="text-sm text-muted-foreground font-medium">{suffix}</span>

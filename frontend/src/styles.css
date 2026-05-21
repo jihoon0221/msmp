@@ -179,12 +179,8 @@
   min-height: 100%;
 }
 
-.phone-content .fixed {
-  position: absolute;
-}
-
-.phone-content .fixed > .max-w-\[420px\] {
-  max-width: 100%;
+.bottom-sheet-panel {
+  max-height: calc(100% - 1rem);
 }
 
 .bottom-tabs {
@@ -195,10 +191,8 @@
 
 @media (min-width: 640px) {
   .phone-frame {
-    width: min(420px, calc((100dvh - 48px) * 9 / 19.5));
-    height: auto;
-    min-height: unset;
-    aspect-ratio: 9 / 19.5;
+    width: min(420px, calc(100vw - 48px));
+    height: min(880px, calc(100dvh - 48px));
     margin-top: 24px;
     margin-bottom: 24px;
     border-radius: 2.5rem;

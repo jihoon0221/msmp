@@ -41,7 +41,7 @@ function Recommendation() {
                 <p className="text-[11px] text-primary font-semibold">기준 목표</p>
               </div>
               <p className="font-semibold text-sm truncate">{goal.title}</p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="truncate text-[11px] text-muted-foreground">
                 {goal.months}개월 · {goal.target.toLocaleString()}만원 · 우선순위 {goal.priority}
               </p>
             </div>
@@ -66,13 +66,13 @@ function Recommendation() {
           <div className="space-y-2.5 mt-5">
             {plan.allocation.map((a) => (
               <div key={a.name} className="flex items-center gap-3">
-                <span className="w-3 h-3 rounded-full" style={{ background: a.color }} />
-                <div className="flex-1 flex items-baseline justify-between">
-                  <div>
+                <span className="w-3 h-3 shrink-0 rounded-full" style={{ background: a.color }} />
+                <div className="flex-1 min-w-0 flex items-baseline justify-between gap-2">
+                  <div className="min-w-0">
                     <span className="text-sm font-semibold">{a.name}</span>
-                    <span className="text-[11px] text-muted-foreground ml-2">{a.desc}</span>
+                    <span className="ml-2 text-[11px] text-muted-foreground">{a.desc}</span>
                   </div>
-                  <span className="font-bold text-sm">{a.pct}%</span>
+                  <span className="shrink-0 font-bold text-sm">{a.pct}%</span>
                 </div>
               </div>
             ))}
@@ -80,7 +80,7 @@ function Recommendation() {
         </div>
 
         <div className="mt-5">
-          <div className="flex items-center gap-2 mb-3 px-1">
+          <div className="flex flex-wrap items-center gap-2 mb-3 px-1">
             <TrendingUp size={16} className="text-primary" />
             <h3 className="font-bold text-sm">추천 종목</h3>
             <span className="text-[11px] text-muted-foreground">목표에 맞춘 구체 종목이에요</span>
@@ -94,8 +94,11 @@ function Recommendation() {
               return (
                 <div key={a.name} className="bg-surface border border-border rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: a.color }} />
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 shrink-0 rounded-full"
+                        style={{ background: a.color }}
+                      />
                       <span className="text-sm font-bold">{a.name}</span>
                       <span className="text-[11px] text-muted-foreground">
                         {a.pct}% · 월 {categoryAmount}만원
@@ -117,7 +120,7 @@ function Recommendation() {
                                 {h.ticker}
                               </span>
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
+                            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight break-words">
                               {h.reason}
                             </p>
                           </div>
@@ -137,18 +140,20 @@ function Recommendation() {
 
         <Link
           to="/explanation"
-          className="flex items-center justify-between bg-primary-soft border border-primary/20 rounded-2xl p-4 mt-4"
+          className="flex items-center justify-between gap-3 bg-primary-soft border border-primary/20 rounded-2xl p-4 mt-4"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="w-10 h-10 shrink-0 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
               <Info size={18} />
             </div>
-            <div>
-              <p className="font-semibold text-sm">왜 이렇게 추천했나요?</p>
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-sm">왜 이렇게 추천했나요?</p>
               <p className="text-xs text-muted-foreground">AI의 판단 근거를 확인하세요</p>
             </div>
           </div>
-          <span className="text-primary font-semibold text-sm">자세히 →</span>
+          <span className="shrink-0 whitespace-nowrap text-primary font-semibold text-sm">
+            자세히 →
+          </span>
         </Link>
 
         <div className="mt-3 bg-surface border border-border rounded-2xl p-4">

@@ -38,12 +38,12 @@ function BottomTabs() {
             <Link
               key={to}
               to={to}
-              className={`flex flex-col items-center gap-1 py-2 text-xs font-medium transition-colors ${
+              className={`flex flex-col items-center justify-center gap-1 py-2 text-xs font-medium leading-none transition-colors ${
                 active ? "text-primary" : "text-muted-foreground"
               }`}
             >
               <Icon size={22} strokeWidth={active ? 2.4 : 2} />
-              <span>{label}</span>
+              <span className="whitespace-nowrap">{label}</span>
             </Link>
           );
         })}

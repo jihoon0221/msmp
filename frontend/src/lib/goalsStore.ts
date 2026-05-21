@@ -9,13 +9,21 @@ export type Goal = {
   saved: number;
   months: number;
   priority: Priority;
-  goalType?: GoalType; // optional explicit type
+  goalType?: GoalType;
 };
 
 export type GoalType = "emergency" | "short" | "mid" | "long" | "ultraLong";
 
 const STORAGE_KEY = "moneypilot.goals.v1";
 const EVENT = "moneypilot:goals-changed";
+const PRIORITIES: Priority[] = ["높음", "보통", "낮음"];
+const GOAL_TYPES: GoalType[] = ["emergency", "short", "mid", "long", "ultraLong"];
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const wholeNumber = (value: unknown, fallback: number) => {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? Math.round(number) : fallback;
+};
 
 export const defaultGoals: Goal[] = [
   {
@@ -48,14 +56,50 @@ export const defaultGoals: Goal[] = [
   },
 ];
 
+export function normalizeGoal(goal: Partial<Goal>): Goal {
+  const target = clamp(wholeNumber(goal.target, 1), 1, 999999);
+  const saved = clamp(wholeNumber(goal.saved, 0), 0, target);
+  const months = clamp(wholeNumber(goal.months, 1), 1, 600);
+  const priority = PRIORITIES.includes(goal.priority as Priority)
+    ? (goal.priority as Priority)
+    : "보통";
+  const goalType = GOAL_TYPES.includes(goal.goalType as GoalType)
+    ? (goal.goalType as GoalType)
+    : undefined;
+  const title =
+    typeof goal.title === "string" && goal.title.trim()
+      ? goal.title.trim().slice(0, 32)
+      : "새 목표";
+  const emoji =
+    typeof goal.emoji === "string" && goal.emoji.trim() ? goal.emoji.trim().slice(0, 4) : "🎯";
+
+  return {
+    id:
+      typeof goal.id === "string" && goal.id
+        ? goal.id
+        : (globalThis.crypto?.randomUUID?.() ?? Date.now().toString()),
+    emoji,
+    title,
+    target,
+    saved,
+    months,
+    priority,
+    ...(goalType ? { goalType } : {}),
+  };
+}
+
+function parseGoals(value: unknown): Goal[] {
+  if (!Array.isArray(value)) return defaultGoals;
+  const goals = value.map((goal) => normalizeGoal(goal as Partial<Goal>));
+  return goals;
+}
+
 export function loadGoals(): Goal[] {
   if (typeof window === "undefined") return defaultGoals;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultGoals;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed as Goal[];
-    return defaultGoals;
+    return parseGoals(JSON.parse(raw));
   } catch {
     return defaultGoals;
   }
@@ -63,7 +107,7 @@ export function loadGoals(): Goal[] {
 
 export function saveGoals(goals: Goal[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(goals.map(normalizeGoal)));
   window.dispatchEvent(new CustomEvent(EVENT));
 }
 

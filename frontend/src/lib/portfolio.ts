@@ -189,7 +189,7 @@ export function buildPortfolio(goals: Goal[]): PortfolioPlan {
   const monthly = primary
     ? requiredMonthly(primary.target, primary.saved, primary.months, p.expectedReturn)
     : 0;
-  const monthlyRounded = Math.max(1, Math.ceil(monthly));
+  const monthlyRounded = primary ? Math.max(1, Math.ceil(monthly)) : 0;
 
   const allocation: AllocationItem[] = (
     [
