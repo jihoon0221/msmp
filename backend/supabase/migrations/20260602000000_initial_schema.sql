@@ -178,3 +178,48 @@ create policy "transactions_delete_own"
 on public.transactions for delete
 using (auth.uid() = user_id);
 
+create table if not exists public.user_holdings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  ticker text not null,
+  name text not null,
+  category text not null check (category in (
+    'domestic_equity_etf',
+    'global_equity_etf',
+    'bond_etf',
+    'alternative_etf',
+    'cash'
+  )),
+  quantity numeric(14, 4) not null default 0 check (quantity >= 0),
+  purchase_price numeric(14, 2) not null default 0 check (purchase_price >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists user_holdings_user_id_idx
+on public.user_holdings(user_id);
+
+drop trigger if exists set_user_holdings_updated_at on public.user_holdings;
+create trigger set_user_holdings_updated_at
+before update on public.user_holdings
+for each row execute function public.set_updated_at();
+
+alter table public.user_holdings enable row level security;
+
+create policy "user_holdings_select_own"
+on public.user_holdings for select
+using (auth.uid() = user_id);
+
+create policy "user_holdings_insert_own"
+on public.user_holdings for insert
+with check (auth.uid() = user_id);
+
+create policy "user_holdings_update_own"
+on public.user_holdings for update
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "user_holdings_delete_own"
+on public.user_holdings for delete
+using (auth.uid() = user_id);
+
