@@ -7,4 +7,6 @@ dist
 .vercel
 .supabase
 coverage
+__pycache__/
+*.py[cod]
 
