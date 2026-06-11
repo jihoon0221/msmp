@@ -133,15 +133,20 @@ export function AssetsView({
         <h3 className="mb-3 text-2xl font-black">
           {formatWon(totalDisplayValue)} <span className="text-sm font-normal">기준</span>
         </h3>
-        <div className="flex items-center justify-between rounded-xl bg-blue-700/50 p-2.5 text-xs">
-          <div>
-            <p className="text-[9px] text-blue-200">이번 달 예상 수익</p>
-            <p className="font-bold text-green-300">+ {formatWon(expectedMonthlyProfit)}</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between rounded-xl bg-blue-700/50 p-2.5 text-xs">
+            <div>
+              <p className="text-[9px] text-blue-200">연간 기대수익 기준 월 환산 예시</p>
+              <p className="font-bold text-green-300">~ {formatWon(expectedMonthlyProfit)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[9px] text-blue-200">모델 기대 연수익률</p>
+              <p className="font-bold text-green-300">{formatPercent(model.expectedReturnPercent)}</p>
+            </div>
           </div>
-          <div className="text-right">
-            <p className="text-[9px] text-blue-200">기대 연수익률</p>
-            <p className="font-bold text-green-300">{formatPercent(model.expectedReturnPercent)}</p>
-          </div>
+          <p className="text-[8px] leading-tight text-blue-200/80">
+            * 시장 변동에 따라 평가금액은 손실이 발생할 수 있으며, 확정 수익이 아닙니다.
+          </p>
         </div>
       </section>
 

@@ -11,7 +11,7 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
       "목표 기한이 비교적 짧더라도 월 투자 여력이 충분한 편입니다. 장기 성장 자산 비중을 높이되 국공채와 현금성 자산을 함께 두어 급락 시 추가 매수 여력을 남깁니다.",
     rationaleFactors: [
       "월 잉여 현금흐름을 핵심 성장 ETF에 우선 배분",
-      "상관관계가 낮은 채권형 ETF로 하방 변동성 완충",
+      "상관관계가 낮은 채권형 ETF로 하방 변동성 완화 추구",
       "2개월 단위 리밸런싱으로 목표 비중 이탈을 빠르게 복구",
     ],
     allocations: [
@@ -44,7 +44,7 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
           {
             name: "KOSEF 국고채10년",
             category: "장기 국채",
-            reason: "주식 급락 구간의 완충 자산",
+            reason: "주식 자산과의 낮은 상관관계를 통한 변동성 완화 추구",
             query: "KOSEF 국고채10년",
           },
         ],
@@ -86,7 +86,7 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
     volatilityPercent: 9.1,
     rebalanceCycleMonths: 4,
     xaiSummary:
-      "목표 달성과 손실 회피를 함께 고려하는 배분입니다. 성장 자산과 확정금리형 자산을 비슷하게 두어 현금흐름의 안정성을 높입니다.",
+      "목표 달성과 손실 가능성을 함께 고려하는 배분 예시입니다. 성장 자산과 금리형 자산을 비슷하게 두어 현금흐름 변동성 완화를 추구합니다.",
     rationaleFactors: [
       "주식형 ETF와 채권형 ETF의 균형 배분",
       "월 배당/이자형 자산으로 심리적 유지 가능성 확보",
@@ -116,7 +116,7 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
           {
             name: "KODEX 단기채권PLUS",
             category: "단기 채권",
-            reason: "금리 변동 위험을 낮춘 안정 자산",
+            reason: "상대적으로 낮은 금리 변동 위험을 추구하는 자산",
             query: "KODEX 단기채권PLUS",
           },
         ],
@@ -158,9 +158,9 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
     volatilityPercent: 4.8,
     rebalanceCycleMonths: 6,
     xaiSummary:
-      "목표 금액을 잃지 않는 것을 최우선으로 둔 배분입니다. 예적금, 파킹, 단기채 비중을 높이고 주식형 자산은 물가상승률 방어 수준으로 제한합니다.",
+      "원금 손실 가능성을 낮추는 데 중점을 둔 배분 예시입니다. 예적금, 파킹, 단기채 비중을 높이고 주식형 자산은 제한적으로 편입합니다.",
     rationaleFactors: [
-      "목표 원금 보존을 위해 안전 자산 우선 배치",
+      "원금 손실 가능성이 낮은 편인 자산을 우선 배치하되 상품별 조건 확인 필요",
       "단기채와 현금성 상품으로 기한 리스크 관리",
       "6개월 단위 점검으로 과도한 거래를 방지",
     ],

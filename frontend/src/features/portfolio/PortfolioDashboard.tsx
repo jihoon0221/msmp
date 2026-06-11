@@ -32,7 +32,10 @@ export function PortfolioDashboard({ inputs, model, actualAssets, onOpenAssetInp
   const actualAllocations = useMemo(() => buildActualAllocations(actualAssets), [actualAssets]);
   const hasActualAssets = actualAllocations.length > 0;
   const displayedAllocations = hasActualAssets && !showRecommendedChart ? actualAllocations : model.allocations;
-  const chartTitle = hasActualAssets && !showRecommendedChart ? "실제 자산 기준 구성 비중" : "AI 최적 자산 분산 배분율";
+  const chartTitle =
+    hasActualAssets && !showRecommendedChart
+      ? "실제 자산 기준 구성 비중"
+      : "투자성향별 모델 포트폴리오 배분안";
 
   const showRebalancePrompt = () => {
     setRebalanceOpen(true);
@@ -64,12 +67,17 @@ export function PortfolioDashboard({ inputs, model, actualAssets, onOpenAssetInp
           />
         </div>
         <div className="flex flex-col gap-1 text-xs">
-          <div className="flex items-center justify-between text-[10px]">
-            <span className="font-extrabold text-blue-600">AI 배분 플랜 적용 시 {simulation.monthSaved}개월 단축 예상</span>
+          <div className="flex items-center justify-between gap-3 text-[10px]">
+            <span className="font-extrabold text-blue-600">
+              시뮬레이션 상 {simulation.monthSaved}개월 단축 기대 (미래 성과 비보장)
+            </span>
             <span className="text-slate-500">
               현재 <strong className="text-slate-800">{simulation.progressPercent}%</strong> 달성
             </span>
           </div>
+          <p className="text-[8px] leading-tight text-slate-400">
+            * 과거 데이터 기반의 단순 산술 계산 결과로 원금 손실 가능성이 있으며, 미래 수익을 보장하지 않습니다.
+          </p>
           <div className="text-right text-[11px] font-bold text-slate-700">
             ({formatManwon(inputs.currentAssetsManwon)}만 / {formatManwon(inputs.goalAmountManwon)}만원)
           </div>
