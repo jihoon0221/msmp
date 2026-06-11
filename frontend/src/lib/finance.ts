@@ -75,7 +75,7 @@ export const getPlanHeadline = (inputs: FinancialInputs) =>
 
 const actualAssetColors = ["#2563eb", "#7c3aed", "#16a34a", "#f59e0b", "#0891b2", "#db2777"];
 
-export const getActualAssetValue = (asset: ActualAsset) => asset.purchasePrice * asset.quantity;
+export const getActualAssetValue = (asset: ActualAsset) => asset.currentPrice * asset.quantity;
 
 export const getActualTotalValue = (assets: ActualAsset[]) =>
   assets.reduce((total, asset) => total + getActualAssetValue(asset), 0);

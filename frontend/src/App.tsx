@@ -36,12 +36,13 @@ function App() {
     setOpenAssetForm(true);
   };
 
-  const addActualAsset = (asset: Omit<ActualAsset, "id">) => {
+  const addActualAsset = (asset: Omit<ActualAsset, "id" | "currentPrice">) => {
     setActualAssets((current) => [
       ...current,
       {
         ...asset,
         id: crypto.randomUUID(),
+        currentPrice: asset.purchasePrice,
       },
     ]);
   };

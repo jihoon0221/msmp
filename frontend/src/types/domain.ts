@@ -40,6 +40,7 @@ export type ActualAsset = {
   category: string;
   name: string;
   purchasePrice: number;
+  currentPrice: number;
   quantity: number;
 };
 
