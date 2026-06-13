@@ -35,15 +35,6 @@ export type PortfolioAllocation = {
   candidates: ProductCandidate[];
 };
 
-export type ActualAsset = {
-  id: string;
-  category: string;
-  name: string;
-  purchasePrice: number;
-  currentPrice: number;
-  quantity: number;
-};
-
 export type PortfolioModel = {
   riskProfile: RiskProfile;
   label: string;
@@ -62,13 +53,72 @@ export type SimulationStats = {
   monthSaved: number;
 };
 
-export type ExploreArticle = {
-  title: string;
-  tag: string;
+export type RelatedNewsArticle = {
+  id: string;
+  matchedKeyword: string;
+  ticker: string | null;
   source: string;
-  desc: string;
-  icon: string;
-  link: string;
+  title: string;
+  summary: string;
+  url: string;
+  publishedAt: string | null;
+  fetchedAt: string;
+};
+
+export type StockAssetFilter = "all" | "kr_stock" | "us_stock" | "kr_etf" | "us_etf";
+
+export type Stock = {
+  id: string;
+  symbol: string;
+  name: string;
+  country: "KR" | "US" | string;
+  market: string;
+  assetType: "stock" | "etf";
+  currency: "KRW" | "USD" | string;
+  isLargeCap: boolean;
+};
+
+export type StockAsset = {
+  id: string;
+  stock: Stock;
+  quantity: number;
+  averageBuyPrice: number;
+  latestPrice: number | null;
+  changeRate: number | null;
+  memo: string | null;
+};
+
+export type DepositAsset = {
+  id: string;
+  depositType: "deposit" | "installment_savings";
+  assetName: string;
+  bankName: string | null;
+  currency: string;
+  currentAmount: number;
+  monthlyPayment: number | null;
+  interestRate: number | null;
+  startDate: string | null;
+  maturityDate: string | null;
+  memo: string | null;
+};
+
+export type BondAsset = {
+  id: string;
+  bondName: string;
+  issuer: string | null;
+  currency: string;
+  principalAmount: number;
+  currentValue: number;
+  couponRate: number | null;
+  purchaseDate: string | null;
+  maturityDate: string | null;
+  memo: string | null;
+};
+
+export type AssetPortfolio = {
+  stockAssets: StockAsset[];
+  depositAssets: DepositAsset[];
+  bondAssets: BondAsset[];
 };
 
 export type ModalContent = {

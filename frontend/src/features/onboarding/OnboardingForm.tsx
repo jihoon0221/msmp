@@ -7,8 +7,9 @@ import { Button } from "../../components/ui/Button";
 
 type OnboardingFormProps = {
   inputs: FinancialInputs;
+  error: string | null;
   onChange: (inputs: FinancialInputs) => void;
-  onAnalyze: () => void;
+  onAnalyze: () => void | Promise<void>;
 };
 
 const riskOptions: Array<{ value: RiskProfile; label: string }> = [
@@ -17,7 +18,7 @@ const riskOptions: Array<{ value: RiskProfile; label: string }> = [
   { value: "stable", label: "안정형" },
 ];
 
-export function OnboardingForm({ inputs, onChange, onAnalyze }: OnboardingFormProps) {
+export function OnboardingForm({ inputs, error, onChange, onAnalyze }: OnboardingFormProps) {
   const monthlyInvestable = getMonthlyInvestable(inputs);
 
   const update = <Key extends keyof FinancialInputs>(key: Key, value: FinancialInputs[Key]) => {
@@ -89,9 +90,8 @@ export function OnboardingForm({ inputs, onChange, onAnalyze }: OnboardingFormPr
             <Wallet size={16} className="text-emerald-600" />
             현재 자산 현황
           </h3>
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800">API 준비</span>
         </div>
-        <p className="mb-3 text-[10px] text-slate-400">현재는 마이데이터 API 연동 전 단계이므로 입력값으로 시뮬레이션합니다.</p>
+        <p className="mb-3 text-[10px] text-slate-400">입력한 현금흐름을 기준으로 포트폴리오 추천 요청을 생성합니다.</p>
         <div className="space-y-3">
           <label className="block">
             <span className="mb-1 block text-[11px] font-semibold text-slate-500">현재 보유 자금 (만원)</span>
@@ -137,7 +137,7 @@ export function OnboardingForm({ inputs, onChange, onAnalyze }: OnboardingFormPr
           <Scale size={16} className="text-indigo-600" />
           투자 성향 자가 진단
         </h3>
-        <p className="mb-3 text-[10px] text-slate-400">추후 Supabase에 설문 문항과 위험등급 산식으로 확장할 수 있는 영역입니다.</p>
+        <p className="mb-3 text-[10px] text-slate-400">투자성향은 추천 API 요청의 핵심 조건으로 사용됩니다.</p>
         <div className="grid grid-cols-3 gap-2">
           {riskOptions.map((risk) => {
             const selected = inputs.riskProfile === risk.value;
@@ -158,6 +158,12 @@ export function OnboardingForm({ inputs, onChange, onAnalyze }: OnboardingFormPr
           })}
         </div>
       </section>
+
+      {error ? (
+        <p className="mb-3 rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-semibold text-red-600">
+          {error}
+        </p>
+      ) : null}
 
       <Button className="w-full text-base" onClick={onAnalyze}>
         시나리오 연산 & AI 자산배분

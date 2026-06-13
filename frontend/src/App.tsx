@@ -1,33 +1,86 @@
-import { useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "./components/layout/AppShell";
-import { getPortfolioModel, defaultFinancialInputs } from "./lib/finance";
+import { AuthView } from "./features/auth/AuthView";
 import { AssetsView } from "./features/assets/AssetsView";
 import { ExploreView } from "./features/explore/ExploreView";
 import { OnboardingForm } from "./features/onboarding/OnboardingForm";
 import { PortfolioDashboard } from "./features/portfolio/PortfolioDashboard";
 import { ProfileView } from "./features/profile/ProfileView";
-import type { ActualAsset, AppTab, FinancialInputs } from "./types/domain";
+import { emptyAssetPortfolio } from "./lib/assetCalculations";
+import { getPortfolioModel, defaultFinancialInputs } from "./lib/finance";
+import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import { requestPortfolioRecommendation } from "./services/moneyPilotApi";
+import type { AppTab, AssetPortfolio, FinancialInputs, PortfolioModel } from "./types/domain";
 
 function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [inputs, setInputs] = useState<FinancialInputs>(defaultFinancialInputs);
-  const [actualAssets, setActualAssets] = useState<ActualAsset[]>([]);
+  const [assetPortfolio, setAssetPortfolio] = useState<AssetPortfolio>(emptyAssetPortfolio);
   const [openAssetForm, setOpenAssetForm] = useState(false);
   const [portfolioDesigned, setPortfolioDesigned] = useState(false);
   const [loading, setLoading] = useState(false);
-  const model = useMemo(() => getPortfolioModel(inputs), [inputs]);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
+  const fallbackModel = useMemo(() => getPortfolioModel(inputs), [inputs]);
+  const [recommendedModel, setRecommendedModel] = useState<PortfolioModel | null>(null);
+  const model = recommendedModel ?? fallbackModel;
 
-  const analyze = () => {
+  useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    let mounted = true;
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (mounted) setSession(data.session);
+      })
+      .finally(() => {
+        if (mounted) setAuthLoading(false);
+      });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (!nextSession) {
+        setAssetPortfolio(emptyAssetPortfolio);
+        setActiveTab("home");
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const analyze = async () => {
     setLoading(true);
-    window.setTimeout(() => {
+    setRecommendationError(null);
+
+    try {
+      const nextModel = await requestPortfolioRecommendation(inputs);
+      setRecommendedModel(nextModel);
+    } catch (error) {
+      console.warn("Portfolio recommendation API unavailable. Falling back to local template.", error);
+      setRecommendedModel(null);
+    } finally {
       setPortfolioDesigned(true);
-      setLoading(false);
       setActiveTab("home");
-    }, 900);
+      setLoading(false);
+    }
   };
 
   const resetGoal = () => {
     setPortfolioDesigned(false);
+    setRecommendedModel(null);
+    setRecommendationError(null);
     setActiveTab("home");
   };
 
@@ -36,19 +89,9 @@ function App() {
     setOpenAssetForm(true);
   };
 
-  const addActualAsset = (asset: Omit<ActualAsset, "id" | "currentPrice">) => {
-    setActualAssets((current) => [
-      ...current,
-      {
-        ...asset,
-        id: crypto.randomUUID(),
-        currentPrice: asset.purchasePrice,
-      },
-    ]);
-  };
-
-  const removeActualAsset = (id: string) => {
-    setActualAssets((current) => current.filter((asset) => asset.id !== id));
+  const signOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
   };
 
   const renderContent = () => {
@@ -56,13 +99,13 @@ function App() {
 
     if (activeTab === "home") {
       if (!portfolioDesigned) {
-        return <OnboardingForm inputs={inputs} onChange={setInputs} onAnalyze={analyze} />;
+        return <OnboardingForm inputs={inputs} error={recommendationError} onChange={setInputs} onAnalyze={analyze} />;
       }
       return (
         <PortfolioDashboard
           inputs={inputs}
           model={model}
-          actualAssets={actualAssets}
+          assetPortfolio={assetPortfolio}
           onOpenAssetInput={openAssetInputFromHome}
           onReset={resetGoal}
         />
@@ -74,26 +117,45 @@ function App() {
         <AssetsView
           inputs={inputs}
           model={model}
-          actualAssets={actualAssets}
           openAssetForm={openAssetForm}
           onAssetFormOpened={() => setOpenAssetForm(false)}
-          onAddAsset={addActualAsset}
-          onRemoveAsset={removeActualAsset}
+          onAssetPortfolioChange={setAssetPortfolio}
         />
       );
     }
 
     if (activeTab === "explore") {
-      return <ExploreView riskProfile={inputs.riskProfile} />;
+      return <ExploreView inputs={inputs} model={model} assetPortfolio={assetPortfolio} />;
     }
 
-    return <ProfileView model={model} onResetGoal={resetGoal} />;
+    return (
+      <ProfileView
+        model={model}
+        userEmail={session?.user.email}
+        onResetGoal={resetGoal}
+        onSignOut={signOut}
+      />
+    );
   };
 
+  if (authLoading) return <AuthLoadingView />;
+  if (!session) return <AuthView onAuthenticated={setSession} />;
+
   return (
-    <AppShell activeTab={activeTab} onTabChange={setActiveTab}>
+    <AppShell activeTab={activeTab} userEmail={session.user.email} onTabChange={setActiveTab}>
       {renderContent()}
     </AppShell>
+  );
+}
+
+function AuthLoadingView() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" />
+        <p className="text-xs font-bold text-slate-500">로그인 상태를 확인하는 중입니다.</p>
+      </div>
+    </main>
   );
 }
 

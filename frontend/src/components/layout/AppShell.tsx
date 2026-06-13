@@ -5,6 +5,7 @@ import type { AppTab } from "../../types/domain";
 
 type AppShellProps = PropsWithChildren<{
   activeTab: AppTab;
+  userEmail?: string;
   onTabChange: (tab: AppTab) => void;
 }>;
 
@@ -15,8 +16,9 @@ const navItems = [
   { tab: "my" as const, label: "MY", icon: User },
 ];
 
-export function AppShell({ children, activeTab, onTabChange }: AppShellProps) {
+export function AppShell({ children, activeTab, userEmail, onTabChange }: AppShellProps) {
   const time = useClock();
+  const avatarLabel = getAvatarLabel(userEmail);
 
   return (
     <div className="flex min-h-screen items-center justify-center px-3 py-4 sm:py-8">
@@ -39,8 +41,11 @@ export function AppShell({ children, activeTab, onTabChange }: AppShellProps) {
             <Send className="text-blue-600" size={20} />
             Money Pilot
           </h1>
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
-            초년
+          <div
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold uppercase text-blue-600"
+            title={userEmail}
+          >
+            {avatarLabel}
           </div>
         </header>
 
@@ -67,4 +72,9 @@ export function AppShell({ children, activeTab, onTabChange }: AppShellProps) {
       </div>
     </div>
   );
+}
+
+function getAvatarLabel(userEmail?: string) {
+  if (!userEmail) return "MP";
+  return userEmail.trim().slice(0, 2) || "MP";
 }

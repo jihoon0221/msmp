@@ -1,55 +1,43 @@
 import {
-  Bolt,
   ChartPie,
   X,
   GraduationCap,
   Lightbulb,
   Network,
-  RotateCcw,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { getGoalLabel } from "../../constants/goals";
-import { buildActualAllocations, computeSimulationStats } from "../../lib/finance";
+import { buildAssetPortfolioAllocations, countAssetPortfolioItems } from "../../lib/assetCalculations";
+import { computeSimulationStats } from "../../lib/finance";
 import { formatManwon, formatPercent } from "../../lib/format";
-import type { ActualAsset, FinancialInputs, PortfolioModel } from "../../types/domain";
+import type { AssetPortfolio, FinancialInputs, PortfolioModel } from "../../types/domain";
 import { PortfolioChart } from "./PortfolioChart";
 
 type PortfolioDashboardProps = {
   inputs: FinancialInputs;
   model: PortfolioModel;
-  actualAssets: ActualAsset[];
+  assetPortfolio: AssetPortfolio;
   onOpenAssetInput: () => void;
   onReset: () => void;
 };
 
-export function PortfolioDashboard({ inputs, model, actualAssets, onOpenAssetInput, onReset }: PortfolioDashboardProps) {
-  const [rebalanceOpen, setRebalanceOpen] = useState(false);
+export function PortfolioDashboard({ inputs, model, assetPortfolio, onOpenAssetInput, onReset }: PortfolioDashboardProps) {
   const [showMptInfo, setShowMptInfo] = useState(false);
   const [showRecommendedChart, setShowRecommendedChart] = useState(false);
   const simulation = useMemo(() => computeSimulationStats(inputs, model), [inputs, model]);
-  const actualAllocations = useMemo(() => buildActualAllocations(actualAssets), [actualAssets]);
-  const hasActualAssets = actualAllocations.length > 0;
-  const displayedAllocations = hasActualAssets && !showRecommendedChart ? actualAllocations : model.allocations;
+  const assetAllocations = useMemo(() => buildAssetPortfolioAllocations(assetPortfolio), [assetPortfolio]);
+  const assetCount = useMemo(() => countAssetPortfolioItems(assetPortfolio), [assetPortfolio]);
+  const hasPortfolioAssets = assetAllocations.length > 0;
+  const displayedAllocations = hasPortfolioAssets && !showRecommendedChart ? assetAllocations : model.allocations;
   const chartTitle =
-    hasActualAssets && !showRecommendedChart
+    hasPortfolioAssets && !showRecommendedChart
       ? "실제 자산 기준 구성 비중"
       : "투자성향별 모델 포트폴리오 배분안";
 
-  const showRebalancePrompt = () => {
-    setRebalanceOpen(true);
-  };
-
   return (
     <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-50 px-5 py-5 pb-24">
-      <div className="mb-4">
-        <Button className="w-full px-2" variant="secondary" onClick={showRebalancePrompt}>
-          <RotateCcw size={15} />
-          현재 상태 점검 및 리밸런싱
-        </Button>
-      </div>
-
       <Card className="mb-4">
         <div className="mb-1.5 flex items-center justify-between">
           <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold text-blue-700">Goal-Based Investing</span>
@@ -102,9 +90,9 @@ export function PortfolioDashboard({ inputs, model, actualAssets, onOpenAssetInp
         <div className="relative mx-auto mb-3 h-40 w-40">
           <PortfolioChart allocations={displayedAllocations} />
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-[9px] font-bold uppercase text-slate-400">{hasActualAssets && !showRecommendedChart ? "실제 입력 자산" : "기대수익률"}</span>
+            <span className="text-[9px] font-bold uppercase text-slate-400">{hasPortfolioAssets && !showRecommendedChart ? "실제 입력 자산" : "기대수익률"}</span>
             <span className="text-lg font-black text-slate-800">
-              {hasActualAssets && !showRecommendedChart ? `${actualAssets.length}개` : `연 ${formatPercent(model.expectedReturnPercent)}`}
+              {hasPortfolioAssets && !showRecommendedChart ? `${assetCount}개` : `연 ${formatPercent(model.expectedReturnPercent)}`}
             </span>
           </div>
         </div>
@@ -114,7 +102,7 @@ export function PortfolioDashboard({ inputs, model, actualAssets, onOpenAssetInp
             <ChartPie size={15} />
             실제 자산 입력하기
           </Button>
-          {hasActualAssets ? (
+          {hasPortfolioAssets ? (
             <Button className="w-full" variant="ghost" onClick={() => setShowRecommendedChart((current) => !current)}>
               {showRecommendedChart ? "실제 자산 기준 차트 보기" : "기존 추천 비중 보기"}
             </Button>
@@ -137,7 +125,6 @@ export function PortfolioDashboard({ inputs, model, actualAssets, onOpenAssetInp
               <Network size={12} />
               부문별 적합 금융상품 후보군
             </h4>
-            <span className="rounded bg-slate-200 px-1 py-0.5 text-[8px] font-black text-slate-700">공시 준비</span>
           </div>
           <div className="space-y-3">
             {model.allocations.map((allocation) => (
@@ -200,73 +187,6 @@ export function PortfolioDashboard({ inputs, model, actualAssets, onOpenAssetInp
         </div>
       ) : null}
 
-      {rebalanceOpen ? (
-        <div className="absolute inset-0 z-50 flex flex-col justify-end bg-slate-900/60 backdrop-blur-sm">
-          <div className="rounded-t-3xl bg-white p-6 pb-12">
-            <div className="mx-auto mb-5 h-1.5 w-12 rounded-full bg-slate-300" />
-            <h3 className="mb-1 text-xl font-black text-slate-900">포트폴리오 리밸런싱</h3>
-            <p className="mb-4 text-xs text-slate-500">
-              현재 비중이 목표 비중에서 이탈했다고 가정하고 기존/복구 비중을 비교합니다.
-            </p>
-            <div className="mb-4 grid grid-cols-2 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-3">
-              <RebalanceBar title="기존 비중" stock={Math.min(90, model.allocations[0].weight + 18)} safe={Math.max(10, 100 - model.allocations[0].weight - 18)} muted />
-              <RebalanceBar title="리밸런싱 후" stock={model.allocations[0].weight} safe={100 - model.allocations[0].weight} />
-            </div>
-            <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
-              <p className="mb-1.5 text-xs font-bold text-blue-800">AI 리밸런싱 전략 가이드</p>
-              <p className="text-[11px] leading-relaxed text-blue-700">
-                성장 자산의 초과 비중을 일부 줄이고 안전 자산으로 이동해 목표 달성 확률을 안정화합니다.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button className="flex-1" variant="ghost" onClick={() => setRebalanceOpen(false)}>
-                나중에
-              </Button>
-              <Button className="flex-[2]" variant="secondary" onClick={() => setRebalanceOpen(false)}>
-                <Bolt size={15} />
-                원클릭 실행
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
-  );
-}
-
-type RebalanceBarProps = {
-  title: string;
-  stock: number;
-  safe: number;
-  muted?: boolean;
-};
-
-function RebalanceBar({ title, stock, safe, muted = false }: RebalanceBarProps) {
-  return (
-    <div className={muted ? "border-r border-slate-200 pr-2" : "pl-2"}>
-      <span className={`mb-2 block text-center text-[10px] font-extrabold uppercase ${muted ? "text-slate-400" : "text-blue-600"}`}>
-        {title}
-      </span>
-      <div className="space-y-2 text-[10px]">
-        <div>
-          <div className="mb-0.5 flex justify-between font-bold">
-            <span>주식 자산</span>
-            <span className={muted ? "text-red-500" : "text-blue-600"}>{stock}%</span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-            <div className={`h-full ${muted ? "bg-red-400" : "bg-blue-500"}`} style={{ width: `${stock}%` }} />
-          </div>
-        </div>
-        <div>
-          <div className="mb-0.5 flex justify-between font-bold">
-            <span>안전 자산</span>
-            <span className={muted ? "text-slate-500" : "text-green-600"}>{safe}%</span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-            <div className={`h-full ${muted ? "bg-slate-400" : "bg-green-500"}`} style={{ width: `${safe}%` }} />
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }

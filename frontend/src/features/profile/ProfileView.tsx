@@ -7,7 +7,9 @@ import type { ModalContent, PortfolioModel } from "../../types/domain";
 
 type ProfileViewProps = {
   model: PortfolioModel;
+  userEmail?: string;
   onResetGoal: () => void;
+  onSignOut: () => void | Promise<void>;
 };
 
 const menuItems: Array<{ icon: ReactNode; title: string; body: string }> = [
@@ -28,16 +30,19 @@ const menuItems: Array<{ icon: ReactNode; title: string; body: string }> = [
   },
 ];
 
-export function ProfileView({ model, onResetGoal }: ProfileViewProps) {
+export function ProfileView({ model, userEmail, onResetGoal, onSignOut }: ProfileViewProps) {
   const [modal, setModal] = useState<ModalContent | null>(null);
+  const avatarLabel = getAvatarLabel(userEmail);
 
   return (
     <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-50 px-5 py-5 pb-24">
       <div className="mb-5 flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-lg font-bold text-blue-600">초년</div>
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-sm font-bold uppercase text-blue-600">
+          {avatarLabel}
+        </div>
         <div>
-          <h2 className="text-base font-bold text-slate-800">김초년 님</h2>
-          <p className="text-xs text-slate-500">{model.label} 투자자 · 자산배분 설계 완료</p>
+          <h2 className="text-base font-bold text-slate-800">{userEmail ?? "로그인 사용자"}</h2>
+          <p className="text-xs text-slate-500">Supabase Auth 계정 · {model.label} 투자자</p>
         </div>
       </div>
 
@@ -69,9 +74,9 @@ export function ProfileView({ model, onResetGoal }: ProfileViewProps) {
         </button>
       </div>
 
-      <Button className="mt-5 w-full bg-slate-100 text-slate-400 hover:bg-slate-200" variant="ghost">
+      <Button className="mt-5 w-full bg-slate-100 text-slate-500 hover:bg-slate-200" variant="ghost" onClick={() => void onSignOut()}>
         <LogOut size={15} />
-        공동인증 안전 로그아웃
+        로그아웃
       </Button>
 
       <Modal open={Boolean(modal)} title={modal?.title ?? ""} onClose={() => setModal(null)}>
@@ -79,4 +84,9 @@ export function ProfileView({ model, onResetGoal }: ProfileViewProps) {
       </Modal>
     </main>
   );
+}
+
+function getAvatarLabel(userEmail?: string) {
+  if (!userEmail) return "MP";
+  return userEmail.trim().slice(0, 2) || "MP";
 }

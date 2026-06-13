@@ -1,82 +1,101 @@
-import { ChartNoAxesColumn, Plus, Trash2, Wallet, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChartNoAxesColumn, Plus, Search, Trash2, Wallet, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { getActualAssetValue, getActualTotalValue } from "../../lib/finance";
+import {
+  calculateBondAssetMetrics,
+  calculateStockAssetMetrics,
+  emptyAssetPortfolio,
+  summarizeAssetPortfolioByCurrency,
+} from "../../lib/assetCalculations";
 import { formatPercent, formatWon, formatWonFromManwon } from "../../lib/format";
-import type { ActualAsset, FinancialInputs, PortfolioModel } from "../../types/domain";
+import {
+  createBondAsset,
+  createDepositAsset,
+  deleteAsset,
+  listAssetPortfolio,
+  searchStocks,
+  upsertStockAsset,
+  type BondAssetInput,
+  type DepositAssetInput,
+  type StockAssetInput,
+} from "../../services/assetRepository";
+import type { AssetPortfolio, FinancialInputs, PortfolioModel, Stock } from "../../types/domain";
 
 type AssetsViewProps = {
   inputs: FinancialInputs;
   model: PortfolioModel;
-  actualAssets: ActualAsset[];
   openAssetForm: boolean;
   onAssetFormOpened: () => void;
-  onAddAsset: (asset: Omit<ActualAsset, "id" | "currentPrice">) => void;
-  onRemoveAsset: (id: string) => void;
+  onAssetPortfolioChange: (portfolio: AssetPortfolio) => void;
 };
 
-const ASSET_CATEGORIES = [
-  "국내 주식형 ETF",
-  "해외 주식형 ETF",
-  "채권형 ETF",
-  "대체자산 ETF",
-  "현금성 자산",
-] as const;
+type AssetType = "stock" | "deposit" | "bond";
+type DepositFormState = {
+  depositType: "deposit" | "installment_savings";
+  assetName: string;
+  bankName: string;
+  currentAmount: string;
+  monthlyPayment: string;
+  interestRate: string;
+  startDate: string;
+  maturityDate: string;
+  memo: string;
+};
 
-type AssetCategory = (typeof ASSET_CATEGORIES)[number];
-
-const defaultForm: {
-  category: AssetCategory;
-  name: string;
-  purchasePrice: string;
-  quantity: string;
-} = {
-  category: "해외 주식형 ETF",
-  name: "",
-  purchasePrice: "",
+const initialStockForm = {
   quantity: "",
+  averageBuyPrice: "",
+  memo: "",
 };
 
-const MOCK_ASSET_AUTOCOMPLETE = [
-  { name: "TIGER 미국S&P500", category: "해외 주식형 ETF", defaultPrice: 17800 },
-  { name: "TIGER 미국테크TOP10 INDXX", category: "해외 주식형 ETF", defaultPrice: 24500 },
-  { name: "TIGER 미국30년국채액티브(H)", category: "채권형 ETF", defaultPrice: 9800 },
-  { name: "TIGER 미국배당다우존스", category: "해외 주식형 ETF", defaultPrice: 13200 },
-  { name: "TIGER 200", category: "국내 주식형 ETF", defaultPrice: 38200 },
-  { name: "KODEX 미국나스닥100TR", category: "해외 주식형 ETF", defaultPrice: 15400 },
-  { name: "KODEX 200", category: "국내 주식형 ETF", defaultPrice: 36800 },
-  { name: "KODEX 단기채권PLUS", category: "채권형 ETF", defaultPrice: 112000 },
-  { name: "SOL 미국배당다우존스", category: "해외 주식형 ETF", defaultPrice: 10550 },
-  { name: "KOSEF 국고채10년", category: "채권형 ETF", defaultPrice: 112500 },
-  { name: "ACE KRX금현물", category: "대체자산 ETF", defaultPrice: 13400 },
-  { name: "TIGER 골드선물(H)", category: "대체자산 ETF", defaultPrice: 16800 },
-  { name: "ACE 미국S&P500", category: "해외 주식형 ETF", defaultPrice: 19800 },
-  { name: "CMA RP형 상품", category: "현금성 자산", defaultPrice: 10000 },
-  { name: "고금리 파킹통장", category: "현금성 자산", defaultPrice: 10000 },
-  { name: "청년도약계좌", category: "현금성 자산", defaultPrice: 10000 },
-] satisfies ReadonlyArray<{ name: string; category: AssetCategory; defaultPrice: number }>;
+const initialDepositForm: DepositFormState = {
+  depositType: "deposit" as const,
+  assetName: "",
+  bankName: "",
+  currentAmount: "",
+  monthlyPayment: "",
+  interestRate: "",
+  startDate: "",
+  maturityDate: "",
+  memo: "",
+};
 
-type AssetSuggestion = (typeof MOCK_ASSET_AUTOCOMPLETE)[number];
-
-const normalizeSearchText = (value: string) => value.toLocaleLowerCase().replace(/\s+/g, "");
+const initialBondForm = {
+  bondName: "",
+  issuer: "",
+  principalAmount: "",
+  currentValue: "",
+  couponRate: "",
+  purchaseDate: "",
+  maturityDate: "",
+  memo: "",
+};
 
 export function AssetsView({
   inputs,
   model,
-  actualAssets,
   openAssetForm,
   onAssetFormOpened,
-  onAddAsset,
-  onRemoveAsset,
+  onAssetPortfolioChange,
 }: AssetsViewProps) {
+  const [portfolio, setPortfolio] = useState<AssetPortfolio>(emptyAssetPortfolio);
+  const [loading, setLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState(defaultForm);
-  const [suggestions, setSuggestions] = useState<AssetSuggestion[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const totalActualValue = getActualTotalValue(actualAssets);
-  const totalDisplayValue = totalActualValue > 0 ? totalActualValue : inputs.currentAssetsManwon * 10000;
-  const expectedMonthlyProfit = (totalDisplayValue * model.expectedReturnPercent) / 12 / 100;
+  const [assetType, setAssetType] = useState<AssetType>("stock");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [stockQuery, setStockQuery] = useState("");
+  const [stockResults, setStockResults] = useState<Stock[]>([]);
+  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
+  const [stockForm, setStockForm] = useState(initialStockForm);
+  const [depositForm, setDepositForm] = useState(initialDepositForm);
+  const [bondForm, setBondForm] = useState(initialBondForm);
+
+  const summaries = useMemo(() => summarizeAssetPortfolioByCurrency(portfolio), [portfolio]);
+  const fallbackValue = inputs.currentAssetsManwon * 10000;
+  const displayTotalValue = summaries.find((summary) => summary.currency === "KRW")?.totalValue ?? fallbackValue;
+  const expectedMonthlyProfit = (displayTotalValue * model.expectedReturnPercent) / 12 / 100;
 
   useEffect(() => {
     if (!openAssetForm) return;
@@ -85,68 +104,169 @@ export function AssetsView({
   }, [onAssetFormOpened, openAssetForm]);
 
   useEffect(() => {
-    const query = normalizeSearchText(form.name.trim());
+    void refreshPortfolio();
+  }, []);
 
-    if (!query) {
-      setSuggestions([]);
+  useEffect(() => {
+    onAssetPortfolioChange(portfolio);
+  }, [onAssetPortfolioChange, portfolio]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function runSearch() {
+      try {
+        const results = await searchStocks(stockQuery, "all");
+        if (!ignore) setStockResults(results);
+      } catch {
+        if (!ignore) setStockResults([]);
+      }
+    }
+
+    void runSearch();
+    return () => {
+      ignore = true;
+    };
+  }, [stockQuery]);
+
+  const refreshPortfolio = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      setPortfolio(await listAssetPortfolio());
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "보유자산을 불러오지 못했습니다.");
+      setPortfolio(emptyAssetPortfolio);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeForm = () => {
+    setFormOpen(false);
+    setError(null);
+  };
+
+  const submitStockAsset = async () => {
+    if (!selectedStock) {
+      setError("종목을 먼저 선택해주세요.");
       return;
     }
 
-    setSuggestions(
-      MOCK_ASSET_AUTOCOMPLETE.filter((item) => normalizeSearchText(item.name).includes(query))
-    );
-  }, [form.name]);
+    const input: StockAssetInput = {
+      stockId: selectedStock.id,
+      quantity: Number(stockForm.quantity),
+      averageBuyPrice: Number(stockForm.averageBuyPrice),
+      memo: stockForm.memo,
+    };
 
-  const selectSuggestion = (suggestion: AssetSuggestion) => {
-    setForm((current) => ({
-      ...current,
-      category: suggestion.category,
-      name: suggestion.name,
-      purchasePrice: String(suggestion.defaultPrice),
-    }));
-    setShowSuggestions(false);
+    if (input.quantity <= 0 || input.averageBuyPrice < 0) {
+      setError("보유 수량과 평균 매수가를 확인해주세요.");
+      return;
+    }
+
+    await submitAsset(async () => {
+      await upsertStockAsset(input);
+      setSelectedStock(null);
+      setStockForm(initialStockForm);
+    });
   };
 
-  const submitAsset = () => {
-    const purchasePrice = Number(form.purchasePrice);
-    const quantity = Number(form.quantity);
-    if (!form.category.trim() || !form.name.trim() || purchasePrice <= 0 || quantity <= 0) return;
+  const submitDepositAsset = async () => {
+    const input: DepositAssetInput = {
+      depositType: depositForm.depositType,
+      assetName: depositForm.assetName,
+      bankName: depositForm.bankName,
+      currentAmount: Number(depositForm.currentAmount),
+      monthlyPayment: depositForm.monthlyPayment ? Number(depositForm.monthlyPayment) : undefined,
+      interestRate: depositForm.interestRate ? Number(depositForm.interestRate) : undefined,
+      startDate: depositForm.startDate,
+      maturityDate: depositForm.maturityDate,
+      memo: depositForm.memo,
+    };
 
-    onAddAsset({
-      category: form.category.trim(),
-      name: form.name.trim(),
-      purchasePrice,
-      quantity,
+    if (!input.assetName.trim() || input.currentAmount < 0) {
+      setError("상품명과 현재 금액을 확인해주세요.");
+      return;
+    }
+
+    await submitAsset(async () => {
+      await createDepositAsset(input);
+      setDepositForm(initialDepositForm);
     });
-    setForm(defaultForm);
-    setFormOpen(false);
+  };
+
+  const submitBondAsset = async () => {
+    const input: BondAssetInput = {
+      bondName: bondForm.bondName,
+      issuer: bondForm.issuer,
+      principalAmount: Number(bondForm.principalAmount),
+      currentValue: Number(bondForm.currentValue),
+      couponRate: bondForm.couponRate ? Number(bondForm.couponRate) : undefined,
+      purchaseDate: bondForm.purchaseDate,
+      maturityDate: bondForm.maturityDate,
+      memo: bondForm.memo,
+    };
+
+    if (!input.bondName.trim() || input.principalAmount < 0 || input.currentValue < 0) {
+      setError("채권명, 투자 원금, 현재 평가액을 확인해주세요.");
+      return;
+    }
+
+    await submitAsset(async () => {
+      await createBondAsset(input);
+      setBondForm(initialBondForm);
+    });
+  };
+
+  const submitAsset = async (save: () => Promise<void>) => {
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      await save();
+      await refreshPortfolio();
+      closeForm();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "자산 저장에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const removeAsset = async (type: AssetType, id: string) => {
+    setError(null);
+    try {
+      await deleteAsset(type, id);
+      await refreshPortfolio();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "자산 삭제에 실패했습니다.");
+    }
   };
 
   return (
     <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-50 px-5 py-5 pb-24">
       <h2 className="mb-1 text-xl font-black">자산 관리</h2>
-      <p className="mb-4 text-[10px] text-slate-400">보유 중인 자산을 직접 입력하면 홈 탭 차트가 실제 자산 기준으로 바뀝니다.</p>
+      <p className="mb-4 text-[10px] text-slate-400">주식/ETF, 예금/적금, 채권을 분리해서 입력하고 평가금액을 확인합니다.</p>
 
       <section className="relative mb-5 overflow-hidden rounded-2xl bg-blue-600 p-5 text-white shadow-md">
         <Wallet className="absolute -right-3 -top-3 text-white opacity-10" size={76} />
         <p className="mb-1 text-[10px] text-blue-100">총 입력 자산</p>
-        <h3 className="mb-3 text-2xl font-black">
-          {formatWon(totalDisplayValue)} <span className="text-sm font-normal">기준</span>
-        </h3>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between rounded-xl bg-blue-700/50 p-2.5 text-xs">
-            <div>
-              <p className="text-[9px] text-blue-200">연간 기대수익 기준 월 환산 예시</p>
-              <p className="font-bold text-green-300">~ {formatWon(expectedMonthlyProfit)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[9px] text-blue-200">모델 기대 연수익률</p>
-              <p className="font-bold text-green-300">{formatPercent(model.expectedReturnPercent)}</p>
-            </div>
-          </div>
-          <p className="text-[8px] leading-tight text-blue-200/80">
-            * 시장 변동에 따라 평가금액은 손실이 발생할 수 있으며, 확정 수익이 아닙니다.
-          </p>
+        <div className="mb-3 space-y-1">
+          {summaries.length > 0 ? (
+            summaries.map((summary) => (
+              <h3 key={summary.currency} className="text-2xl font-black">
+                {summary.currency} {formatWon(summary.totalValue)}
+              </h3>
+            ))
+          ) : (
+            <h3 className="text-2xl font-black">{formatWon(fallbackValue)} 기준</h3>
+          )}
+        </div>
+        <div className="rounded-xl bg-blue-700/50 p-2.5 text-xs">
+          <p className="text-[9px] text-blue-200">연간 기대수익 기준 월 환산 예시</p>
+          <p className="font-bold text-green-300">~ {formatWon(expectedMonthlyProfit)}</p>
         </div>
       </section>
 
@@ -157,7 +277,7 @@ export function AssetsView({
         </h3>
         <div className="space-y-3.5">
           {model.allocations.map((allocation) => {
-            const allocationAmount = (totalDisplayValue / 10000) * (allocation.weight / 100);
+            const allocationAmount = (displayTotalValue / 10000) * (allocation.weight / 100);
             return (
               <div key={allocation.key}>
                 <div className="mb-1 flex justify-between gap-3 text-xs">
@@ -176,195 +296,332 @@ export function AssetsView({
 
         <Button className="mt-4 w-full" variant="secondary" onClick={() => setFormOpen(true)}>
           <Plus size={15} />
-          실제 자산 입력하기
+          보유자산 추가
         </Button>
       </Card>
 
-      <Card>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h3 className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-            <Wallet size={15} className="text-emerald-500" />
-            수동 기입 보유 목록
-          </h3>
-          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-extrabold text-slate-500">
-            일일 시세 기준
-          </span>
-        </div>
-        <p className="mb-3 text-[9px] font-medium leading-relaxed text-slate-400">
-          현재가는 하루 1회 갱신되는 마감가 기준입니다.
-        </p>
-        {actualAssets.length > 0 ? (
-          <div className="space-y-2.5">
-            {actualAssets.map((asset) => {
-              const purchaseValue = asset.purchasePrice * asset.quantity;
-              const currentValue = getActualAssetValue(asset);
-              const profitLoss = currentValue - purchaseValue;
-              const returnPercent =
-                asset.purchasePrice > 0
-                  ? ((asset.currentPrice - asset.purchasePrice) / asset.purchasePrice) * 100
-                  : 0;
-              const performanceClass =
-                profitLoss > 0
-                  ? "bg-rose-50 text-rose-600"
-                  : profitLoss < 0
-                    ? "bg-blue-50 text-blue-600"
-                    : "bg-slate-100 text-slate-500";
+      {error ? <p className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-semibold text-red-600">{error}</p> : null}
+      {loading ? <p className="mb-4 text-center text-xs text-slate-400">보유자산을 불러오는 중입니다.</p> : null}
 
-              return (
-                <div key={asset.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <span className="inline-flex rounded-md border border-slate-200 bg-white px-2 py-1 text-[9px] font-bold text-slate-500">
-                        {asset.category}
-                      </span>
-                      <p className="mt-2 truncate text-sm font-extrabold text-slate-800">{asset.name}</p>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label={`${asset.name} 삭제`}
-                      className="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white hover:text-rose-500"
-                      onClick={() => onRemoveAsset(asset.id)}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] font-semibold text-slate-500">
-                    <p>
-                      매입단가: <span className="font-bold text-slate-700">{formatWon(asset.purchasePrice)}</span>
-                    </p>
-                    <p>
-                      보유수량: <span className="font-bold text-slate-700">{asset.quantity}주</span>
-                    </p>
-                    <p className="col-span-2">
-                      현재단가: <span className="font-extrabold text-blue-600">{formatWon(asset.currentPrice)}</span>
-                    </p>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <p className="text-xs font-black text-slate-800">평가액 {formatWon(currentValue)}</p>
-                    <span className={`rounded-lg px-2 py-1 text-[10px] font-extrabold ${performanceClass}`}>
-                      수익률: {formatPercent(returnPercent)} ({profitLoss > 0 ? "+" : ""}
-                      {formatWon(profitLoss)})
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="rounded-xl bg-slate-50 p-3 text-center text-xs font-semibold text-slate-400">
-            아직 입력된 실제 자산이 없습니다.
-          </p>
-        )}
-      </Card>
+      <AssetSections portfolio={portfolio} onRemove={removeAsset} />
 
       {formOpen ? (
-        <div className="absolute inset-0 z-50 flex items-end bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setFormOpen(false)}>
-          <div className="w-full rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="absolute inset-0 z-50 flex items-end bg-slate-900/50 p-4 backdrop-blur-sm" onClick={closeForm}>
+          <div className="max-h-[86vh] w-full overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900">실제 자산 입력</h3>
+              <h3 className="text-base font-black text-slate-900">보유자산 추가</h3>
               <button
                 type="button"
                 aria-label="자산 입력 닫기"
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                onClick={() => setFormOpen(false)}
+                onClick={closeForm}
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold text-slate-500">카테고리</span>
-                <select
-                  value={form.category}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, category: event.target.value as AssetCategory }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {ASSET_CATEGORIES.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="relative block">
-                <span className="mb-1 block text-[11px] font-semibold text-slate-500">종목 이름</span>
-                <input
-                  value={form.name}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, name: event.target.value }));
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => setShowSuggestions(false)}
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={showSuggestions && suggestions.length > 0}
-                  aria-controls="asset-name-suggestions"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="예: TIGER 미국S&P500"
-                />
-                {showSuggestions && suggestions.length > 0 && (
-                  <ul
-                    id="asset-name-suggestions"
-                    role="listbox"
-                    className="absolute left-0 right-0 top-full z-50 mt-1 max-h-40 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
-                  >
-                    {suggestions.map((suggestion) => (
-                      <li key={suggestion.name} role="option">
-                        <button
-                          type="button"
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            selectSuggestion(suggestion);
-                          }}
-                          className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-slate-50"
-                        >
-                          <span className="truncate text-xs font-extrabold text-slate-700">{suggestion.name}</span>
-                          <span className="shrink-0 rounded-md bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-600">
-                            {suggestion.category}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">구매가격 (원)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.purchasePrice}
-                    onChange={(event) => setForm((current) => ({ ...current, purchasePrice: event.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="15000"
-                  />
-                </label>
-                <label>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">구매량</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.quantity}
-                    onChange={(event) => setForm((current) => ({ ...current, quantity: event.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="10"
-                  />
-                </label>
-              </div>
-              <Button className="w-full" variant="secondary" onClick={submitAsset}>
-                입력 완료
-              </Button>
+            <div className="mb-4 grid grid-cols-3 gap-2">
+              <AssetTypeButton selected={assetType === "stock"} label="주식/ETF" onClick={() => setAssetType("stock")} />
+              <AssetTypeButton selected={assetType === "deposit"} label="예금/적금" onClick={() => setAssetType("deposit")} />
+              <AssetTypeButton selected={assetType === "bond"} label="채권" onClick={() => setAssetType("bond")} />
             </div>
+
+            {assetType === "stock" ? (
+              <div className="space-y-3">
+                <label>
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">종목 검색</span>
+                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <Search size={14} className="text-slate-400" />
+                    <input
+                      value={stockQuery}
+                      onChange={(event) => setStockQuery(event.target.value)}
+                      className="min-w-0 flex-1 bg-transparent text-xs font-semibold outline-none"
+                      placeholder="삼성전자, AAPL"
+                    />
+                  </div>
+                </label>
+
+                {stockQuery.trim() ? (
+                  <div className="max-h-36 space-y-1 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-2">
+                    {stockResults.map((stock) => (
+                      <button
+                        key={stock.id}
+                        type="button"
+                        className={`w-full rounded-lg px-3 py-2 text-left text-[11px] ${
+                          selectedStock?.id === stock.id ? "bg-blue-600 text-white" : "bg-white text-slate-600"
+                        }`}
+                        onClick={() => setSelectedStock(stock)}
+                      >
+                        <strong>{stock.name}</strong>
+                        <span className="ml-2 opacity-80">
+                          {stock.symbol} · {stock.country} · {stock.assetType.toUpperCase()}
+                        </span>
+                      </button>
+                    ))}
+                    {stockResults.length === 0 ? <p className="py-4 text-center text-xs text-slate-400">검색 결과가 없습니다.</p> : null}
+                  </div>
+                ) : null}
+
+                {selectedStock ? (
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs">
+                    <p className="font-extrabold text-blue-900">{selectedStock.name}</p>
+                    <p className="mt-0.5 text-[10px] font-semibold text-blue-600">
+                      {selectedStock.symbol} · {selectedStock.market} · {selectedStock.currency}
+                    </p>
+                  </div>
+                ) : null}
+
+                <NumberInput label="보유 수량" value={stockForm.quantity} onChange={(value) => setStockForm((current) => ({ ...current, quantity: value }))} />
+                <NumberInput
+                  label="평균 매수가"
+                  value={stockForm.averageBuyPrice}
+                  onChange={(value) => setStockForm((current) => ({ ...current, averageBuyPrice: value }))}
+                />
+                <TextInput label="메모" value={stockForm.memo} onChange={(value) => setStockForm((current) => ({ ...current, memo: value }))} />
+                <Button className="w-full" variant="secondary" onClick={submitStockAsset} disabled={submitting}>
+                  {submitting ? "저장 중..." : "주식/ETF 저장"}
+                </Button>
+              </div>
+            ) : null}
+
+            {assetType === "deposit" ? (
+              <div className="space-y-3">
+                <label>
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">구분</span>
+                  <select
+                    value={depositForm.depositType}
+                    onChange={(event) =>
+                      setDepositForm((current) => ({
+                        ...current,
+                        depositType: event.target.value as "deposit" | "installment_savings",
+                      }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold"
+                  >
+                    <option value="deposit">예금</option>
+                    <option value="installment_savings">적금</option>
+                  </select>
+                </label>
+                <TextInput label="상품명" value={depositForm.assetName} onChange={(value) => setDepositForm((current) => ({ ...current, assetName: value }))} />
+                <NumberInput label="현재 금액" value={depositForm.currentAmount} onChange={(value) => setDepositForm((current) => ({ ...current, currentAmount: value }))} />
+                {depositForm.depositType === "installment_savings" ? (
+                  <NumberInput
+                    label="월 납입액"
+                    value={depositForm.monthlyPayment}
+                    onChange={(value) => setDepositForm((current) => ({ ...current, monthlyPayment: value }))}
+                  />
+                ) : null}
+                <TextInput label="은행명" value={depositForm.bankName} onChange={(value) => setDepositForm((current) => ({ ...current, bankName: value }))} />
+                <NumberInput label="연 이자율" value={depositForm.interestRate} onChange={(value) => setDepositForm((current) => ({ ...current, interestRate: value }))} />
+                <DateInput label="가입일" value={depositForm.startDate} onChange={(value) => setDepositForm((current) => ({ ...current, startDate: value }))} />
+                <DateInput label="만기일" value={depositForm.maturityDate} onChange={(value) => setDepositForm((current) => ({ ...current, maturityDate: value }))} />
+                <TextInput label="메모" value={depositForm.memo} onChange={(value) => setDepositForm((current) => ({ ...current, memo: value }))} />
+                <Button className="w-full" variant="secondary" onClick={submitDepositAsset} disabled={submitting}>
+                  {submitting ? "저장 중..." : "예금/적금 저장"}
+                </Button>
+              </div>
+            ) : null}
+
+            {assetType === "bond" ? (
+              <div className="space-y-3">
+                <TextInput label="채권명" value={bondForm.bondName} onChange={(value) => setBondForm((current) => ({ ...current, bondName: value }))} />
+                <NumberInput label="투자 원금" value={bondForm.principalAmount} onChange={(value) => setBondForm((current) => ({ ...current, principalAmount: value }))} />
+                <NumberInput label="현재 평가액" value={bondForm.currentValue} onChange={(value) => setBondForm((current) => ({ ...current, currentValue: value }))} />
+                <TextInput label="발행기관" value={bondForm.issuer} onChange={(value) => setBondForm((current) => ({ ...current, issuer: value }))} />
+                <NumberInput label="표면금리" value={bondForm.couponRate} onChange={(value) => setBondForm((current) => ({ ...current, couponRate: value }))} />
+                <DateInput label="매수일" value={bondForm.purchaseDate} onChange={(value) => setBondForm((current) => ({ ...current, purchaseDate: value }))} />
+                <DateInput label="만기일" value={bondForm.maturityDate} onChange={(value) => setBondForm((current) => ({ ...current, maturityDate: value }))} />
+                <TextInput label="메모" value={bondForm.memo} onChange={(value) => setBondForm((current) => ({ ...current, memo: value }))} />
+                <Button className="w-full" variant="secondary" onClick={submitBondAsset} disabled={submitting}>
+                  {submitting ? "저장 중..." : "채권 저장"}
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
     </main>
   );
+}
+
+function AssetSections({
+  portfolio,
+  onRemove,
+}: {
+  portfolio: AssetPortfolio;
+  onRemove: (type: AssetType, id: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <SectionTitle title="주식/ETF" count={portfolio.stockAssets.length} />
+        <div className="space-y-2.5">
+          {portfolio.stockAssets.map((asset) => {
+            const metrics = calculateStockAssetMetrics(asset);
+            return (
+              <AssetRow
+                key={asset.id}
+                title={asset.stock.name}
+                subtitle={`${asset.stock.symbol} · ${asset.stock.market} · ${asset.stock.currency}`}
+                value={metrics.currentValue == null ? "가격 조회 필요" : formatWon(metrics.currentValue)}
+                detail={`수량 ${asset.quantity} · 평균 ${formatWon(asset.averageBuyPrice)}`}
+                tone={metrics.profitLoss == null ? "neutral" : metrics.profitLoss >= 0 ? "gain" : "loss"}
+                badge={metrics.returnPercent == null ? undefined : formatPercent(metrics.returnPercent)}
+                onRemove={() => onRemove("stock", asset.id)}
+              />
+            );
+          })}
+          {portfolio.stockAssets.length === 0 ? <EmptyState label="입력된 주식/ETF가 없습니다." /> : null}
+        </div>
+      </Card>
+
+      <Card>
+        <SectionTitle title="예금/적금" count={portfolio.depositAssets.length} />
+        <div className="space-y-2.5">
+          {portfolio.depositAssets.map((asset) => (
+            <AssetRow
+              key={asset.id}
+              title={asset.assetName}
+              subtitle={`${asset.depositType === "deposit" ? "예금" : "적금"} · ${asset.bankName ?? "은행 미입력"}`}
+              value={formatWon(asset.currentAmount)}
+              detail={asset.interestRate == null ? "이자율 미입력" : `연 ${asset.interestRate}%`}
+              onRemove={() => onRemove("deposit", asset.id)}
+            />
+          ))}
+          {portfolio.depositAssets.length === 0 ? <EmptyState label="입력된 예금/적금이 없습니다." /> : null}
+        </div>
+      </Card>
+
+      <Card>
+        <SectionTitle title="채권" count={portfolio.bondAssets.length} />
+        <div className="space-y-2.5">
+          {portfolio.bondAssets.map((asset) => {
+            const metrics = calculateBondAssetMetrics(asset);
+            return (
+              <AssetRow
+                key={asset.id}
+                title={asset.bondName}
+                subtitle={asset.issuer ?? "발행기관 미입력"}
+                value={formatWon(asset.currentValue)}
+                detail={`원금 ${formatWon(asset.principalAmount)}`}
+                tone={metrics.profitLoss >= 0 ? "gain" : "loss"}
+                badge={formatPercent(metrics.returnPercent)}
+                onRemove={() => onRemove("bond", asset.id)}
+              />
+            );
+          })}
+          {portfolio.bondAssets.length === 0 ? <EmptyState label="입력된 채권이 없습니다." /> : null}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SectionTitle({ title, count }: { title: string; count: number }) {
+  return (
+    <div className="mb-3 flex items-center justify-between">
+      <h3 className="text-xs font-black text-slate-800">{title}</h3>
+      <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-extrabold text-slate-500">{count}개</span>
+    </div>
+  );
+}
+
+function AssetRow({
+  title,
+  subtitle,
+  value,
+  detail,
+  badge,
+  tone = "neutral",
+  onRemove,
+}: {
+  title: string;
+  subtitle: string;
+  value: string;
+  detail: string;
+  badge?: string;
+  tone?: "neutral" | "gain" | "loss";
+  onRemove: () => void;
+}) {
+  const toneClass =
+    tone === "gain" ? "bg-rose-50 text-rose-600" : tone === "loss" ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-500";
+
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-extrabold text-slate-800">{title}</p>
+          <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{subtitle}</p>
+        </div>
+        <button
+          type="button"
+          aria-label={`${title} 삭제`}
+          className="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white hover:text-rose-500"
+          onClick={onRemove}
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-black text-slate-800">{value}</p>
+        <span className="text-[10px] font-semibold text-slate-400">{detail}</span>
+        {badge ? <span className={`rounded-lg px-2 py-1 text-[10px] font-extrabold ${toneClass}`}>{badge}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function AssetTypeButton({ selected, label, onClick }: { selected: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`rounded-xl border px-2 py-2 text-xs font-extrabold ${
+        selected ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500"
+      }`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return <BaseInput label={label} type="text" value={value} onChange={onChange} />;
+}
+
+function NumberInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return <BaseInput label={label} type="number" value={value} onChange={onChange} />;
+}
+
+function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return <BaseInput label={label} type="date" value={value} onChange={onChange} />;
+}
+
+function BaseInput({
+  label,
+  type,
+  value,
+  onChange,
+}: {
+  label: string;
+  type: "text" | "number" | "date";
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold text-slate-500">{label}</span>
+      <input
+        type={type}
+        min={type === "number" ? 0 : undefined}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+    </label>
+  );
+}
+
+function EmptyState({ label }: { label: string }) {
+  return <p className="rounded-xl bg-slate-50 p-3 text-center text-xs font-semibold text-slate-400">{label}</p>;
 }
