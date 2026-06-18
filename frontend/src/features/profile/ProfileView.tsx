@@ -35,46 +35,46 @@ export function ProfileView({ model, userEmail, onResetGoal, onSignOut }: Profil
   const avatarLabel = getAvatarLabel(userEmail);
 
   return (
-    <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-50 px-5 py-5 pb-24">
-      <div className="mb-5 flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-sm font-bold uppercase text-blue-600">
+    <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-950 px-5 py-5 pb-24">
+      <div className="mb-5 flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-sm">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-sm font-bold uppercase text-white">
           {avatarLabel}
         </div>
         <div>
-          <h2 className="text-base font-bold text-slate-800">{userEmail ?? "로그인 사용자"}</h2>
-          <p className="text-xs text-slate-500">Supabase Auth 계정 · {model.label} 투자자</p>
+          <h2 className="text-base font-bold text-slate-100">{userEmail ?? "로그인 사용자"}</h2>
+          <p className="text-xs text-slate-400">Supabase Auth 계정 · {model.label} 투자자</p>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-sm">
         {menuItems.map((item) => (
           <button
             key={item.title}
             type="button"
-            className="flex w-full items-center justify-between border-b border-slate-50 p-3.5 text-left transition-colors last:border-b-0 hover:bg-slate-50"
+            className="flex w-full items-center justify-between border-b border-slate-800 p-3.5 text-left transition-colors last:border-b-0 hover:bg-slate-800"
             onClick={() => setModal({ title: item.title, body: item.body })}
           >
-            <span className="flex items-center gap-2.5 text-xs font-bold text-slate-700">
+            <span className="flex items-center gap-2.5 text-xs font-bold text-slate-200">
               <span className="text-slate-400">{item.icon}</span>
               {item.title}
             </span>
-            <ChevronRight size={14} className="text-slate-300" />
+            <ChevronRight size={14} className="text-slate-400" />
           </button>
         ))}
         <button
           type="button"
-          className="flex w-full items-center justify-between p-3.5 text-left transition-colors hover:bg-slate-50"
+          className="flex w-full items-center justify-between p-3.5 text-left transition-colors hover:bg-slate-800"
           onClick={onResetGoal}
         >
-          <span className="flex items-center gap-2.5 text-xs font-bold text-slate-700">
+          <span className="flex items-center gap-2.5 text-xs font-bold text-slate-200">
             <Target size={16} className="text-slate-400" />
             재무 설계 파라미터 재설정
           </span>
-          <ChevronRight size={14} className="text-slate-300" />
+          <ChevronRight size={14} className="text-slate-400" />
         </button>
       </div>
 
-      <Button className="mt-5 w-full bg-slate-100 text-slate-500 hover:bg-slate-200" variant="ghost" onClick={() => void onSignOut()}>
+      <Button className="mt-5 w-full" variant="ghost" onClick={() => void onSignOut()}>
         <LogOut size={15} />
         로그아웃
       </Button>

@@ -150,10 +150,10 @@ function App() {
 
 function AuthLoadingView() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" />
-        <p className="text-xs font-bold text-slate-500">로그인 상태를 확인하는 중입니다.</p>
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-700 border-t-blue-500" />
+        <p className="text-xs font-bold text-slate-400">로그인 상태를 확인하는 중입니다.</p>
       </div>
     </main>
   );
@@ -161,12 +161,12 @@ function AuthLoadingView() {
 
 function LoadingView() {
   return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white">
-      <div className="mb-4 h-14 w-14 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" />
-      <h2 className="mb-1 text-lg font-extrabold text-slate-900">정량적 포트폴리오 최적화 중...</h2>
-      <div className="space-y-1 px-8 text-center text-xs text-slate-500">
+    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/95">
+      <div className="mb-4 h-14 w-14 animate-spin rounded-full border-4 border-slate-700 border-t-blue-500" />
+      <h2 className="mb-1 text-lg font-extrabold text-slate-100">정량적 포트폴리오 최적화 중...</h2>
+      <div className="space-y-1 px-8 text-center text-xs text-slate-400">
         <p>소득 대비 목표 달성 가능성을 계산 중...</p>
-        <p className="text-[11px] font-bold text-blue-600">MPT 기반 자산 배분 후보 탐색 중...</p>
+        <p className="text-[11px] font-bold text-blue-400">MPT 기반 자산 배분 후보 탐색 중...</p>
       </div>
     </div>
   );

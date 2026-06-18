@@ -1,6 +1,6 @@
-import type { PortfolioModel } from "../types/domain";
+import type { PortfolioAllocation, PortfolioModel } from "../types/domain";
 
-export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioModel> = {
+const rawPortfolioModels: Record<PortfolioModel["riskProfile"], PortfolioModel> = {
   aggressive: {
     riskProfile: "aggressive",
     label: "공격형",
@@ -51,7 +51,7 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
       },
       {
         key: "cash",
-        label: "파킹/CMA",
+        label: "예적금",
         weight: 15,
         color: "#16a34a",
         candidates: [
@@ -137,7 +137,7 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
       },
       {
         key: "cash",
-        label: "파킹/CMA",
+        label: "예적금",
         weight: 10,
         color: "#16a34a",
         candidates: [
@@ -167,7 +167,7 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
     allocations: [
       {
         key: "cash",
-        label: "파킹/CMA",
+        label: "예적금",
         weight: 35,
         color: "#16a34a",
         candidates: [
@@ -225,3 +225,116 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
   },
 };
 
+type AllocationGroupKey = "stock-etf" | "deposit-savings" | "bond";
+
+const allocationGroupMeta: Record<AllocationGroupKey, Pick<PortfolioAllocation, "label" | "color">> = {
+  "stock-etf": {
+    label: "주식/ETF",
+    color: "#2563eb",
+  },
+  "deposit-savings": {
+    label: "예금/적금",
+    color: "#16a34a",
+  },
+  bond: {
+    label: "채권",
+    color: "#7c3aed",
+  },
+};
+
+const allocationGroupOrder: AllocationGroupKey[] = ["stock-etf", "deposit-savings", "bond"];
+
+const portfolioTargets: Record<
+  PortfolioModel["riskProfile"],
+  {
+    expectedReturnPercent: number;
+    weights: Record<AllocationGroupKey, number>;
+  }
+> = {
+  aggressive: {
+    expectedReturnPercent: 8.5,
+    weights: {
+      "stock-etf": 70,
+      "deposit-savings": 10,
+      bond: 20,
+    },
+  },
+  neutral: {
+    expectedReturnPercent: 6.0,
+    weights: {
+      "stock-etf": 50,
+      "deposit-savings": 10,
+      bond: 40,
+    },
+  },
+  stable: {
+    expectedReturnPercent: 4.2,
+    weights: {
+      "stock-etf": 10,
+      "deposit-savings": 30,
+      bond: 60,
+    },
+  },
+};
+
+function getAllocationGroupKey(allocation: PortfolioAllocation): AllocationGroupKey {
+  if (allocation.key === "bond") return "bond";
+  if (allocation.key === "cash" || allocation.key === "deposit") return "deposit-savings";
+
+  return "stock-etf";
+}
+
+function groupAllocations(
+  allocations: PortfolioAllocation[],
+  weights: Record<AllocationGroupKey, number>,
+): PortfolioAllocation[] {
+  const grouped = new Map<AllocationGroupKey, PortfolioAllocation>();
+
+  for (const allocation of allocations) {
+    const groupKey = getAllocationGroupKey(allocation);
+    const existing = grouped.get(groupKey);
+
+    if (existing) {
+      existing.candidates = [...existing.candidates, ...allocation.candidates];
+      continue;
+    }
+
+    grouped.set(groupKey, {
+      key: groupKey,
+      label: allocationGroupMeta[groupKey].label,
+      weight: weights[groupKey],
+      color: allocationGroupMeta[groupKey].color,
+      candidates: [...allocation.candidates],
+    });
+  }
+
+  return allocationGroupOrder.flatMap((groupKey) => {
+    const allocation = grouped.get(groupKey);
+
+    return [
+      allocation ?? {
+        key: groupKey,
+        label: allocationGroupMeta[groupKey].label,
+        weight: weights[groupKey],
+        color: allocationGroupMeta[groupKey].color,
+        candidates: [],
+      },
+    ];
+  });
+}
+
+function normalizePortfolioModel(model: PortfolioModel): PortfolioModel {
+  const target = portfolioTargets[model.riskProfile];
+
+  return {
+    ...model,
+    expectedReturnPercent: target.expectedReturnPercent,
+    allocations: groupAllocations(model.allocations, target.weights),
+  };
+}
+
+export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioModel> = {
+  aggressive: normalizePortfolioModel(rawPortfolioModels.aggressive),
+  neutral: normalizePortfolioModel(rawPortfolioModels.neutral),
+  stable: normalizePortfolioModel(rawPortfolioModels.stable),
+};

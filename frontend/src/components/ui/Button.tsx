@@ -9,10 +9,10 @@ type ButtonProps = PropsWithChildren<
 >;
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-slate-900 text-white hover:bg-slate-800 shadow-sm",
-  secondary: "bg-blue-600 text-white hover:bg-blue-700 shadow-sm",
-  danger: "bg-rose-600 text-white hover:bg-rose-700 shadow-sm",
-  ghost: "bg-slate-100 text-slate-600 hover:bg-slate-200",
+  primary: "bg-blue-600 text-white hover:bg-blue-500 shadow-sm",
+  secondary: "bg-slate-800 text-white hover:bg-slate-700 shadow-sm",
+  danger: "bg-rose-500 text-white hover:bg-rose-400 shadow-sm",
+  ghost: "bg-slate-800 text-slate-100 hover:bg-slate-700",
 };
 
 export function Button({ children, className = "", variant = "primary", type = "button", ...props }: ButtonProps) {

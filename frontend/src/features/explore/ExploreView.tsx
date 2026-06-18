@@ -69,12 +69,12 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
   }, [assetNames, candidateQueries, inputs.goalType, inputs.riskProfile, refreshCount, tickers]);
 
   return (
-    <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-50 px-5 py-5 pb-24">
+    <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-950 px-5 py-5 pb-24">
       <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-xl font-black">보유 자산 관련 뉴스</h2>
+        <h2 className="text-xl font-black text-slate-100">보유 자산 관련 뉴스</h2>
         <button
           type="button"
-          className="flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex items-center gap-1 rounded-lg bg-blue-600 px-2 py-1 text-[10px] font-bold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => setRefreshCount((value) => value + 1)}
           disabled={isLoading}
         >
@@ -83,19 +83,19 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
         </button>
       </div>
       <div className="mb-4">
-        <p className="mb-1 text-[10px] text-slate-500">
+        <p className="mb-1 text-[10px] text-slate-400">
           현재 나의 보유 종목과 {riskLabels[inputs.riskProfile]} 투자 성향을 기반으로 선별한 관련 뉴스입니다.
         </p>
-        <p className="text-[9px] font-semibold text-blue-500">네이버 뉴스 검색 API에서 최신 관련 기사를 가져옵니다.</p>
+        <p className="text-[9px] font-semibold text-blue-300">네이버 뉴스 검색 API에서 최신 관련 기사를 가져옵니다.</p>
       </div>
 
 
       <Card>
-        <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-slate-800">보유 종목 기반 관련 기사</h3>
+        <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-slate-100">보유 종목 기반 관련 기사</h3>
         {isLoading ? (
           <p className="py-6 text-center text-xs text-slate-400">관련 뉴스를 불러오는 중입니다.</p>
         ) : error ? (
-          <p className="py-6 text-center text-xs text-red-500">{error}</p>
+          <p className="py-6 text-center text-xs text-rose-300">{error}</p>
         ) : articles.length === 0 ? (
           <p className="py-6 text-center text-xs text-slate-400">표시할 관련 뉴스가 없습니다.</p>
         ) : (
@@ -114,8 +114,8 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
 
 function ArticleRow({ article }: { article: RelatedNewsArticle }) {
   return (
-    <a className="flex gap-3 rounded-xl border border-slate-100 bg-white p-2.5 transition hover:bg-slate-50" href={article.url} target="_blank" rel="noreferrer">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+    <a className="flex gap-3 rounded-xl border border-slate-700 bg-slate-900 p-2.5 transition hover:bg-slate-800" href={article.url} target="_blank" rel="noreferrer">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-blue-300">
         <FileText size={18} />
       </div>
       <div className="min-w-0 flex-1">
@@ -123,9 +123,9 @@ function ArticleRow({ article }: { article: RelatedNewsArticle }) {
           <span className="text-[8px] font-extrabold text-slate-400">
           {article.matchedKeyword} · {article.source}
           </span>
-          <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[8px] font-bold text-blue-600">원문</span>
+          <span className="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-[8px] font-bold text-blue-300">원문</span>
         </div>
-        <p className="line-clamp-2 text-xs font-bold text-slate-800">{article.title}</p>
+        <p className="line-clamp-2 text-xs font-bold text-slate-100">{article.title}</p>
         <p className="mt-1 line-clamp-2 text-[9px] text-slate-400">{article.summary}</p>
       </div>
     </a>

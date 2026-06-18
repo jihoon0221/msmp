@@ -12,8 +12,8 @@
   body {
     min-height: 100vh;
     margin: 0;
-    background: #0f172a;
-    color: #1e293b;
+    background: #020617;
+    color: #e2e8f0;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -26,11 +26,11 @@
 
 @layer components {
   .glass-card {
-    background: rgba(255, 255, 255, 0.98);
-    border: 1px solid rgba(226, 232, 240, 0.8);
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(71, 85, 105, 0.45);
     box-shadow:
-      0 4px 12px -1px rgba(15, 23, 42, 0.04),
-      0 2px 6px -1px rgba(15, 23, 42, 0.03);
+      0 24px 80px -32px rgba(15, 23, 42, 0.7),
+      0 2px 6px -1px rgba(15, 23, 42, 0.2);
   }
 
   .gradient-text {
