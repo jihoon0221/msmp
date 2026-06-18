@@ -59,6 +59,19 @@ export function OnboardingForm({ inputs, error, onChange, onAnalyze }: Onboardin
             </select>
           </label>
 
+          {inputs.goalType === "other" ? (
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold text-slate-500">기타 목표 입력</span>
+              <input
+                type="text"
+                value={inputs.customGoalLabel ?? ""}
+                onChange={(event) => update("customGoalLabel", event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="예: 창업자금, 유학비 등"
+              />
+            </label>
+          ) : null}
+
           <div className="flex gap-3">
             <label className="flex-1">
               <span className="mb-1 block text-[11px] font-semibold text-slate-500">목표액 (만원)</span>

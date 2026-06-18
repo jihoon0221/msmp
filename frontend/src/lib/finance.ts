@@ -6,6 +6,7 @@ export const defaultFinancialInputs: FinancialInputs = {
   goalType: "jeonse",
   goalAmountManwon: 5000,
   goalYears: 3,
+  customGoalLabel: "",
   currentAssetsManwon: 1500,
   monthlySalaryManwon: 320,
   monthlySpendManwon: 180,
@@ -71,4 +72,6 @@ export const computeSimulationStats = (
 };
 
 export const getPlanHeadline = (inputs: FinancialInputs) =>
-  `${inputs.goalYears}년 뒤 ${getGoalLabel(inputs.goalType)}`;
+  `${inputs.goalYears}년 뒤 ${
+    inputs.goalType === "other" ? inputs.customGoalLabel || "기타" : getGoalLabel(inputs.goalType)
+  }`;

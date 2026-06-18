@@ -30,7 +30,6 @@ export function AppShell({ children, activeTab, userEmail, onTabChange }: AppShe
             <span className="block h-1 w-8 rounded-full bg-slate-700" />
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] font-semibold text-emerald-400">SECURE</span>
             <Wifi size={12} />
             <BatteryMedium size={14} />
           </div>

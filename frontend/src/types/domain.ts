@@ -1,6 +1,6 @@
 export type RiskProfile = "stable" | "neutral" | "aggressive";
 
-export type GoalType = "jeonse" | "seed" | "car" | "wedding";
+export type GoalType = "jeonse" | "seed" | "car" | "wedding" | "other";
 
 export type AppTab = "home" | "assets" | "explore" | "my";
 
@@ -14,6 +14,7 @@ export type FinancialInputs = {
   goalType: GoalType;
   goalAmountManwon: number;
   goalYears: number;
+  customGoalLabel?: string;
   currentAssetsManwon: number;
   monthlySalaryManwon: number;
   monthlySpendManwon: number;
