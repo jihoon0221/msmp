@@ -12,7 +12,7 @@ type AppShellProps = PropsWithChildren<{
 const navItems = [
   { tab: "home" as const, label: "홈", icon: Home },
   { tab: "assets" as const, label: "자산현황", icon: ChartNoAxesColumn },
-  { tab: "explore" as const, label: "AI탐색", icon: Compass },
+  { tab: "explore" as const, label: "금융뉴스", icon: Compass },
   { tab: "my" as const, label: "MY", icon: User },
 ];
 

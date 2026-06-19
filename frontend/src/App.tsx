@@ -7,7 +7,7 @@ import { ExploreView } from "./features/explore/ExploreView";
 import { OnboardingForm } from "./features/onboarding/OnboardingForm";
 import { PortfolioDashboard } from "./features/portfolio/PortfolioDashboard";
 import { ProfileView } from "./features/profile/ProfileView";
-import { emptyAssetPortfolio } from "./lib/assetCalculations";
+import { emptyAssetPortfolio, summarizeAssetPortfolioByCurrency } from "./lib/assetCalculations";
 import { getPortfolioModel, defaultFinancialInputs } from "./lib/finance";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { requestPortfolioRecommendation } from "./services/moneyPilotApi";
@@ -23,7 +23,18 @@ function App() {
   const [portfolioDesigned, setPortfolioDesigned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
-  const fallbackModel = useMemo(() => getPortfolioModel(inputs), [inputs]);
+  const assetTotalManwon = useMemo(() => {
+    const totalWon = summarizeAssetPortfolioByCurrency(assetPortfolio).reduce(
+      (total, summary) => total + summary.totalValue,
+      0,
+    );
+    return Math.round(totalWon / 10000);
+  }, [assetPortfolio]);
+  const inputsWithAssetTotal = useMemo(
+    () => ({ ...inputs, currentAssetsManwon: assetTotalManwon }),
+    [assetTotalManwon, inputs],
+  );
+  const fallbackModel = useMemo(() => getPortfolioModel(inputsWithAssetTotal), [inputsWithAssetTotal]);
   const [recommendedModel, setRecommendedModel] = useState<PortfolioModel | null>(null);
   const model = recommendedModel ?? fallbackModel;
 
@@ -65,7 +76,7 @@ function App() {
     setRecommendationError(null);
 
     try {
-      const nextModel = await requestPortfolioRecommendation(inputs);
+      const nextModel = await requestPortfolioRecommendation(inputsWithAssetTotal);
       setRecommendedModel(nextModel);
     } catch (error) {
       console.warn("Portfolio recommendation API unavailable. Falling back to local template.", error);
@@ -84,11 +95,6 @@ function App() {
     setActiveTab("home");
   };
 
-  const openAssetInputFromHome = () => {
-    setActiveTab("assets");
-    setOpenAssetForm(true);
-  };
-
   const signOut = async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
@@ -99,14 +105,23 @@ function App() {
 
     if (activeTab === "home") {
       if (!portfolioDesigned) {
-        return <OnboardingForm inputs={inputs} error={recommendationError} onChange={setInputs} onAnalyze={analyze} />;
+        return (
+          <OnboardingForm
+            inputs={inputsWithAssetTotal}
+            assetPortfolio={assetPortfolio}
+            error={recommendationError}
+            onChange={setInputs}
+            onOpenAssetsView={() => setActiveTab("assets")}
+            onAnalyze={analyze}
+          />
+        );
       }
       return (
         <PortfolioDashboard
-          inputs={inputs}
+          inputs={inputsWithAssetTotal}
           model={model}
           assetPortfolio={assetPortfolio}
-          onOpenAssetInput={openAssetInputFromHome}
+          onRebalanceNow={() => setActiveTab("assets")}
           onReset={resetGoal}
         />
       );
@@ -115,7 +130,7 @@ function App() {
     if (activeTab === "assets") {
       return (
         <AssetsView
-          inputs={inputs}
+          inputs={inputsWithAssetTotal}
           model={model}
           openAssetForm={openAssetForm}
           onAssetFormOpened={() => setOpenAssetForm(false)}
@@ -125,7 +140,7 @@ function App() {
     }
 
     if (activeTab === "explore") {
-      return <ExploreView inputs={inputs} model={model} assetPortfolio={assetPortfolio} />;
+      return <ExploreView inputs={inputsWithAssetTotal} model={model} assetPortfolio={assetPortfolio} />;
     }
 
     return (

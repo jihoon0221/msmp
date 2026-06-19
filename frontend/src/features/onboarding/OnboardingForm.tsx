@@ -1,14 +1,18 @@
-import { BarChart3, Scale, Target, Wallet } from "lucide-react";
+import { BarChart3, ChartNoAxesColumn, Scale, Target, Wallet } from "lucide-react";
+import { useMemo } from "react";
 import { goalOptions } from "../../constants/goals";
+import { countAssetPortfolioItems, summarizeAssetPortfolioByCurrency } from "../../lib/assetCalculations";
 import { getMonthlyInvestable } from "../../lib/finance";
-import { formatManwon } from "../../lib/format";
-import type { FinancialInputs, RiskProfile } from "../../types/domain";
+import { formatManwon, formatWon } from "../../lib/format";
+import type { AssetPortfolio, FinancialInputs, RiskProfile } from "../../types/domain";
 import { Button } from "../../components/ui/Button";
 
 type OnboardingFormProps = {
   inputs: FinancialInputs;
+  assetPortfolio: AssetPortfolio;
   error: string | null;
   onChange: (inputs: FinancialInputs) => void;
+  onOpenAssetsView: () => void;
   onAnalyze: () => void | Promise<void>;
 };
 
@@ -18,8 +22,21 @@ const riskOptions: Array<{ value: RiskProfile; label: string }> = [
   { value: "stable", label: "안정형" },
 ];
 
-export function OnboardingForm({ inputs, error, onChange, onAnalyze }: OnboardingFormProps) {
+export function OnboardingForm({
+  inputs,
+  assetPortfolio,
+  error,
+  onChange,
+  onOpenAssetsView,
+  onAnalyze,
+}: OnboardingFormProps) {
   const monthlyInvestable = getMonthlyInvestable(inputs);
+  const assetSummaries = useMemo(() => summarizeAssetPortfolioByCurrency(assetPortfolio), [assetPortfolio]);
+  const assetCount = useMemo(() => countAssetPortfolioItems(assetPortfolio), [assetPortfolio]);
+  const totalAssetValue = useMemo(
+    () => assetSummaries.reduce((total, summary) => total + summary.totalValue, 0),
+    [assetSummaries],
+  );
 
   const update = <Key extends keyof FinancialInputs>(key: Key, value: FinancialInputs[Key]) => {
     onChange({ ...inputs, [key]: value });
@@ -41,7 +58,7 @@ export function OnboardingForm({ inputs, error, onChange, onAnalyze }: Onboardin
       <section className="glass-card mb-5 rounded-2xl p-4">
         <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-100">
           <Target size={16} className="text-blue-400" />
-          가장 중요한 재무 목표
+          나의 재무 목표
         </h3>
         <div className="space-y-3">
           <label className="block">
@@ -104,18 +121,26 @@ export function OnboardingForm({ inputs, error, onChange, onAnalyze }: Onboardin
             현재 자산 현황
           </h3>
         </div>
-        <p className="mb-3 text-[10px] text-slate-400">입력한 현금흐름을 기준으로 포트폴리오 추천 요청을 생성합니다.</p>
+        <p className="mb-3 text-[10px] text-slate-400">자산현황에 입력한 보유자산과 현금흐름을 기준으로 추천 요청을 생성합니다.</p>
         <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-400">현재 보유 자금 (만원)</span>
-            <input
-              type="number"
-              min={0}
-              value={inputs.currentAssetsManwon}
-              onChange={(event) => update("currentAssetsManwon", Number(event.target.value))}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-left transition hover:border-blue-500 hover:bg-slate-900"
+            onClick={onOpenAssetsView}
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-800 text-blue-300">
+                <ChartNoAxesColumn size={17} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold text-slate-400">자산 보유 현황 입력</span>
+                <span className="block truncate text-sm font-black text-slate-100">
+                  {assetCount > 0 ? formatWon(totalAssetValue) : "입력된 자산이 없습니다"}
+                </span>
+              </span>
+            </span>
+            <span className="shrink-0 rounded-lg bg-blue-600 px-2.5 py-1 text-[10px] font-extrabold text-white">입력</span>
+          </button>
           <div className="grid grid-cols-2 gap-3">
             <label>
               <span className="mb-1 block text-[11px] font-semibold text-slate-400">월 실수령액 (만원)</span>
@@ -179,7 +204,7 @@ export function OnboardingForm({ inputs, error, onChange, onAnalyze }: Onboardin
       ) : null}
 
       <Button className="w-full text-base" onClick={onAnalyze}>
-        시나리오 연산 & AI 자산배분
+        포트폴리오 추천받기
         <BarChart3 size={18} />
       </Button>
     </main>

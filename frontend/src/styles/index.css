@@ -61,6 +61,22 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
+
+  .bottom-sheet-enter {
+    animation: bottom-sheet-enter 220ms ease-out both;
+  }
+}
+
+@keyframes bottom-sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 input[type="range"] {

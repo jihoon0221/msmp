@@ -1,5 +1,5 @@
-import { ChartNoAxesColumn, Plus, Search, Trash2, Wallet, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, ChartNoAxesColumn, Plus, Search, Trash2, Wallet, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import {
@@ -8,7 +8,7 @@ import {
   emptyAssetPortfolio,
   summarizeAssetPortfolioByCurrency,
 } from "../../lib/assetCalculations";
-import { formatPercent, formatWon, formatWonFromManwon } from "../../lib/format";
+import { formatPercent, formatWon } from "../../lib/format";
 import {
   createBondAsset,
   createDepositAsset,
@@ -31,6 +31,12 @@ type AssetsViewProps = {
 };
 
 type AssetType = "stock" | "deposit" | "bond";
+type AllocationSummary = {
+  key: string;
+  label: string;
+  weight: number;
+  color: string;
+};
 type DepositFormState = {
   depositType: "deposit" | "installment_savings";
   assetName: string;
@@ -72,6 +78,12 @@ const initialBondForm = {
   memo: "",
 };
 
+const assetTypeLabels: Record<AssetType, string> = {
+  stock: "주식/ETF",
+  deposit: "예금/적금",
+  bond: "채권",
+};
+
 export function AssetsView({
   inputs,
   model,
@@ -93,8 +105,8 @@ export function AssetsView({
   const [bondForm, setBondForm] = useState(initialBondForm);
 
   const summaries = useMemo(() => summarizeAssetPortfolioByCurrency(portfolio), [portfolio]);
+  const assetAllocations = useMemo(() => buildEnteredAssetAllocations(portfolio, model.allocations), [model.allocations, portfolio]);
   const fallbackValue = inputs.currentAssetsManwon * 10000;
-  const displayTotalValue = summaries.find((summary) => summary.currency === "KRW")?.totalValue ?? fallbackValue;
 
   useEffect(() => {
     if (!openAssetForm) return;
@@ -145,6 +157,12 @@ export function AssetsView({
   const closeForm = () => {
     setFormOpen(false);
     setError(null);
+  };
+
+  const openFormForAssetType = (type: AssetType) => {
+    setAssetType(type);
+    setError(null);
+    setFormOpen(true);
   };
 
   const submitStockAsset = async () => {
@@ -201,15 +219,15 @@ export function AssetsView({
       bondName: bondForm.bondName,
       issuer: bondForm.issuer,
       principalAmount: Number(bondForm.principalAmount),
-      currentValue: Number(bondForm.currentValue),
+      currentValue: Number(bondForm.principalAmount),
       couponRate: bondForm.couponRate ? Number(bondForm.couponRate) : undefined,
       purchaseDate: bondForm.purchaseDate,
       maturityDate: bondForm.maturityDate,
       memo: bondForm.memo,
     };
 
-    if (!input.bondName.trim() || input.principalAmount < 0 || input.currentValue < 0) {
-      setError("채권명, 투자 원금, 현재 평가액을 확인해주세요.");
+    if (!input.bondName.trim() || input.principalAmount < 0) {
+      setError("채권명과 투자 원금을 확인해주세요.");
       return;
     }
 
@@ -260,7 +278,7 @@ export function AssetsView({
               </h3>
             ))
           ) : (
-            <h3 className="text-2xl font-black">{formatWon(fallbackValue)} 기준</h3>
+            <h3 className="text-2xl font-black">{formatWon(fallbackValue)}</h3>
           )}
         </div>
       </section>
@@ -268,43 +286,23 @@ export function AssetsView({
       <Card className="mb-5 bg-slate-900 border-slate-700">
         <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-slate-100">
           <ChartNoAxesColumn size={15} className="text-blue-400" />
-          추천 배분 기준 구성 비중
+          추천 배분 구성 비중
         </h3>
-        <div className="space-y-3.5">
-          {model.allocations.map((allocation) => {
-            const allocationAmount = (displayTotalValue / 10000) * (allocation.weight / 100);
-            return (
-              <div key={allocation.key}>
-                <div className="mb-1 flex justify-between gap-3 text-xs">
-                  <span className="font-bold text-slate-200">{allocation.label}</span>
-                  <span className="shrink-0 font-extrabold text-slate-100">
-                    {formatWonFromManwon(allocationAmount)} ({allocation.weight}%)
-                  </span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-slate-800">
-                  <div className="h-2 rounded-full" style={{ width: `${allocation.weight}%`, backgroundColor: allocation.color }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <AllocationStack title="추천 비중" allocations={model.allocations} />
+        <AllocationStack title="내 자산 기준 비중" allocations={assetAllocations} emptyMessage="입력된 자산이 없습니다." />
 
-        <Button className="mt-4 w-full" variant="secondary" onClick={() => setFormOpen(true)}>
-          <Plus size={15} />
-          보유자산 추가
-        </Button>
       </Card>
 
       {error ? <p className="mb-4 rounded-xl border border-rose-800 bg-rose-950 p-3 text-xs font-semibold text-rose-300">{error}</p> : null}
       {loading ? <p className="mb-4 text-center text-xs text-slate-400">보유자산을 불러오는 중입니다.</p> : null}
 
-      <AssetSections portfolio={portfolio} onRemove={removeAsset} />
+      <AssetSections portfolio={portfolio} onAdd={openFormForAssetType} onRemove={removeAsset} />
 
       {formOpen ? (
         <div className="absolute inset-0 z-50 flex items-end bg-slate-900/70 p-4 backdrop-blur-sm" onClick={closeForm}>
           <div className="max-h-[86vh] w-full overflow-y-auto rounded-2xl bg-slate-950 p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-100">보유자산 추가</h3>
+              <h3 className="text-base font-black text-slate-100">{assetTypeLabels[assetType]} 추가</h3>
               <button
                 type="button"
                 aria-label="자산 입력 닫기"
@@ -313,12 +311,6 @@ export function AssetsView({
               >
                 <X size={18} />
               </button>
-            </div>
-
-            <div className="mb-4 grid grid-cols-3 gap-2">
-              <AssetTypeButton selected={assetType === "stock"} label="주식/ETF" onClick={() => setAssetType("stock")} />
-              <AssetTypeButton selected={assetType === "deposit"} label="예금/적금" onClick={() => setAssetType("deposit")} />
-              <AssetTypeButton selected={assetType === "bond"} label="채권" onClick={() => setAssetType("bond")} />
             </div>
 
             {assetType === "stock" ? (
@@ -367,7 +359,7 @@ export function AssetsView({
                 ) : null}
 
                 <NumberInput label="보유 수량" value={stockForm.quantity} onChange={(value) => setStockForm((current) => ({ ...current, quantity: value }))} />
-                <NumberInput
+                <MoneyInput
                   label="평균 매수가"
                   value={stockForm.averageBuyPrice}
                   onChange={(value) => setStockForm((current) => ({ ...current, averageBuyPrice: value }))}
@@ -398,9 +390,9 @@ export function AssetsView({
                   </select>
                 </label>
                 <TextInput label="상품명" value={depositForm.assetName} onChange={(value) => setDepositForm((current) => ({ ...current, assetName: value }))} />
-                <NumberInput label="현재 금액" value={depositForm.currentAmount} onChange={(value) => setDepositForm((current) => ({ ...current, currentAmount: value }))} />
+                <MoneyInput label="원금" value={depositForm.currentAmount} onChange={(value) => setDepositForm((current) => ({ ...current, currentAmount: value }))} />
                 {depositForm.depositType === "installment_savings" ? (
-                  <NumberInput
+                  <MoneyInput
                     label="월 납입액"
                     value={depositForm.monthlyPayment}
                     onChange={(value) => setDepositForm((current) => ({ ...current, monthlyPayment: value }))}
@@ -420,8 +412,7 @@ export function AssetsView({
             {assetType === "bond" ? (
               <div className="space-y-3">
                 <TextInput label="채권명" value={bondForm.bondName} onChange={(value) => setBondForm((current) => ({ ...current, bondName: value }))} />
-                <NumberInput label="투자 원금" value={bondForm.principalAmount} onChange={(value) => setBondForm((current) => ({ ...current, principalAmount: value }))} />
-                <NumberInput label="현재 평가액" value={bondForm.currentValue} onChange={(value) => setBondForm((current) => ({ ...current, currentValue: value }))} />
+                <MoneyInput label="투자 원금" value={bondForm.principalAmount} onChange={(value) => setBondForm((current) => ({ ...current, principalAmount: value }))} />
                 <TextInput label="발행기관" value={bondForm.issuer} onChange={(value) => setBondForm((current) => ({ ...current, issuer: value }))} />
                 <NumberInput label="표면금리" value={bondForm.couponRate} onChange={(value) => setBondForm((current) => ({ ...current, couponRate: value }))} />
                 <DateInput label="매수일" value={bondForm.purchaseDate} onChange={(value) => setBondForm((current) => ({ ...current, purchaseDate: value }))} />
@@ -441,15 +432,17 @@ export function AssetsView({
 
 function AssetSections({
   portfolio,
+  onAdd,
   onRemove,
 }: {
   portfolio: AssetPortfolio;
+  onAdd: (type: AssetType) => void;
   onRemove: (type: AssetType, id: string) => void;
 }) {
   return (
     <div className="space-y-4">
       <Card>
-        <SectionTitle title="주식/ETF" count={portfolio.stockAssets.length} />
+        <SectionTitle title="주식/ETF" count={portfolio.stockAssets.length} onAdd={() => onAdd("stock")} />
         <div className="space-y-2.5">
           {portfolio.stockAssets.map((asset) => {
             const metrics = calculateStockAssetMetrics(asset);
@@ -459,7 +452,9 @@ function AssetSections({
                 title={asset.stock.name}
                 subtitle={`${asset.stock.symbol} · ${asset.stock.market} · ${asset.stock.currency}`}
                 value={metrics.currentValue == null ? "가격 조회 필요" : formatWon(metrics.currentValue)}
-                detail={`수량 ${asset.quantity} · 평균 ${formatWon(asset.averageBuyPrice)}`}
+                detail={`수량 ${asset.quantity} · 평균 ${formatWon(asset.averageBuyPrice)} · 현재 ${
+                  asset.latestPrice == null ? "조회 필요" : formatWon(asset.latestPrice)
+                }`}
                 tone={metrics.profitLoss == null ? "neutral" : metrics.profitLoss >= 0 ? "gain" : "loss"}
                 badge={metrics.returnPercent == null ? undefined : formatPercent(metrics.returnPercent)}
                 onRemove={() => onRemove("stock", asset.id)}
@@ -471,7 +466,7 @@ function AssetSections({
       </Card>
 
       <Card>
-        <SectionTitle title="예금/적금" count={portfolio.depositAssets.length} />
+        <SectionTitle title="예금/적금" count={portfolio.depositAssets.length} onAdd={() => onAdd("deposit")} />
         <div className="space-y-2.5">
           {portfolio.depositAssets.map((asset) => (
             <AssetRow
@@ -488,7 +483,7 @@ function AssetSections({
       </Card>
 
       <Card>
-        <SectionTitle title="채권" count={portfolio.bondAssets.length} />
+        <SectionTitle title="채권" count={portfolio.bondAssets.length} onAdd={() => onAdd("bond")} />
         <div className="space-y-2.5">
           {portfolio.bondAssets.map((asset) => {
             const metrics = calculateBondAssetMetrics(asset);
@@ -512,11 +507,64 @@ function AssetSections({
   );
 }
 
-function SectionTitle({ title, count }: { title: string; count: number }) {
+function SectionTitle({ title, count, onAdd }: { title: string; count: number; onAdd: () => void }) {
   return (
     <div className="mb-3 flex items-center justify-between">
       <h3 className="text-xs font-black text-slate-100">{title}</h3>
-      <span className="rounded-full bg-slate-800 px-2 py-1 text-[9px] font-extrabold text-slate-300">{count}개</span>
+      <div className="flex items-center gap-2">
+        <span className="rounded-full bg-slate-800 px-2 py-1 text-[9px] font-extrabold text-slate-300">{count}개</span>
+        <button
+          type="button"
+          aria-label={`${title} 추가`}
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-500"
+          onClick={onAdd}
+        >
+          <Plus size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AllocationStack({
+  title,
+  allocations,
+  emptyMessage,
+}: {
+  title: string;
+  allocations: AllocationSummary[];
+  emptyMessage?: string;
+}) {
+  const hasAllocations = allocations.some((allocation) => allocation.weight > 0);
+
+  return (
+    <div className="mb-5 last:mb-0">
+      <p className="mb-2 text-[10px] font-extrabold text-slate-400">{title}</p>
+      {hasAllocations ? (
+        <>
+          <div className="flex h-4 w-full overflow-hidden rounded-full bg-slate-800">
+            {allocations.map((allocation) => (
+              <div
+                key={allocation.key}
+                className="h-full"
+                style={{ width: `${allocation.weight}%`, backgroundColor: allocation.color }}
+                title={`${allocation.label} ${allocation.weight}%`}
+              />
+            ))}
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {allocations.map((allocation) => (
+              <div key={allocation.key} className="flex items-center gap-2 text-[11px] font-bold text-slate-200">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: allocation.color }} />
+                <span className="min-w-0 flex-1 truncate">{allocation.label}</span>
+                <span className="shrink-0 text-slate-100">{allocation.weight}%</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="rounded-xl bg-slate-800 p-3 text-center text-xs font-semibold text-slate-400">{emptyMessage}</p>
+      )}
     </div>
   );
 }
@@ -566,20 +614,6 @@ function AssetRow({
   );
 }
 
-function AssetTypeButton({ selected, label, onClick }: { selected: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      className={`rounded-xl border px-2 py-2 text-xs font-extrabold ${
-        selected ? "border-blue-500 bg-slate-800 text-slate-100" : "border-slate-700 text-slate-400 hover:bg-slate-800"
-      }`}
-      onClick={onClick}
-    >
-      {label}
-    </button>
-  );
-}
-
 function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return <BaseInput label={label} type="text" value={value} onChange={onChange} />;
 }
@@ -588,18 +622,79 @@ function NumberInput({ label, value, onChange }: { label: string; value: string;
   return <BaseInput label={label} type="number" value={value} onChange={onChange} />;
 }
 
+function MoneyInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <BaseInput
+      label={label}
+      type="text"
+      inputMode="numeric"
+      value={formatNumericInput(value)}
+      onChange={(nextValue) => onChange(stripNumericSeparators(nextValue))}
+    />
+  );
+}
+
 function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <BaseInput label={label} type="date" value={value} onChange={onChange} />;
+  const pickerRef = useRef<HTMLInputElement | null>(null);
+  const pickerValue = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+
+  const openPicker = () => {
+    const picker = pickerRef.current;
+    if (!picker) return;
+
+    if (typeof picker.showPicker === "function") {
+      picker.showPicker();
+      return;
+    }
+
+    picker.click();
+  };
+
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold text-slate-400">{label}</span>
+      <div className="relative">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="yyyy-mm-dd"
+          value={value}
+          onChange={(event) => onChange(formatDateInput(event.target.value))}
+          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 pr-11 text-xs font-semibold text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          type="button"
+          aria-label={`${label} 달력 열기`}
+          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-blue-300"
+          onClick={openPicker}
+        >
+          <CalendarDays size={16} />
+        </button>
+        <input
+          ref={pickerRef}
+          type="date"
+          value={pickerValue}
+          onChange={(event) => onChange(event.target.value)}
+          className="sr-only"
+          tabIndex={-1}
+        />
+      </div>
+    </label>
+  );
 }
 
 function BaseInput({
   label,
   type,
+  inputMode,
+  placeholder,
   value,
   onChange,
 }: {
   label: string;
   type: "text" | "number" | "date";
+  inputMode?: "numeric" | "decimal";
+  placeholder?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -608,7 +703,9 @@ function BaseInput({
       <span className="mb-1 block text-[11px] font-semibold text-slate-400">{label}</span>
       <input
         type={type}
+        inputMode={inputMode}
         min={type === "number" ? 0 : undefined}
+        placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs font-semibold text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -619,4 +716,44 @@ function BaseInput({
 
 function EmptyState({ label }: { label: string }) {
   return <p className="rounded-xl bg-slate-800 p-3 text-center text-xs font-semibold text-slate-400">{label}</p>;
+}
+
+function stripNumericSeparators(value: string) {
+  return value.replace(/[^\d]/g, "");
+}
+
+function formatNumericInput(value: string) {
+  const digits = stripNumericSeparators(value);
+  return digits ? Number(digits).toLocaleString("ko-KR") : "";
+}
+
+function formatDateInput(value: string) {
+  const digits = value.replace(/[^\d]/g, "").slice(0, 8);
+  const year = digits.slice(0, 4);
+  const month = digits.slice(4, 6);
+  const day = digits.slice(6, 8);
+
+  return [year, month, day].filter(Boolean).join("-");
+}
+
+function buildEnteredAssetAllocations(portfolio: AssetPortfolio, modelAllocations: AllocationSummary[]): AllocationSummary[] {
+  const stockValue = portfolio.stockAssets.reduce((total, asset) => {
+    const metrics = calculateStockAssetMetrics(asset);
+    return total + (metrics.currentValue ?? metrics.purchaseValue);
+  }, 0);
+  const depositValue = portfolio.depositAssets.reduce((total, asset) => total + asset.currentAmount, 0);
+  const bondValue = portfolio.bondAssets.reduce((total, asset) => total + asset.currentValue, 0);
+  const totalValue = stockValue + depositValue + bondValue;
+  const valueByKey: Record<string, number> = {
+    "stock-etf": stockValue,
+    "deposit-savings": depositValue,
+    bond: bondValue,
+  };
+
+  return modelAllocations.map((allocation) => ({
+    key: allocation.key,
+    label: allocation.label,
+    color: allocation.color,
+    weight: totalValue > 0 ? Math.round(((valueByKey[allocation.key] ?? 0) / totalValue) * 100) : 0,
+  }));
 }
