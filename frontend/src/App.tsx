@@ -21,6 +21,7 @@ function App() {
   const [assetPortfolio, setAssetPortfolio] = useState<AssetPortfolio>(emptyAssetPortfolio);
   const [openAssetForm, setOpenAssetForm] = useState(false);
   const [portfolioDesigned, setPortfolioDesigned] = useState(false);
+  const [excludedCandidates, setExcludedCandidates] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const fallbackModel = useMemo(() => getPortfolioModel(inputs), [inputs]);
@@ -61,6 +62,7 @@ function App() {
   }, []);
 
   const analyze = async () => {
+    setExcludedCandidates([]);
     setLoading(true);
     setRecommendationError(null);
 
@@ -78,10 +80,19 @@ function App() {
   };
 
   const resetGoal = () => {
+    setExcludedCandidates([]);
     setPortfolioDesigned(false);
     setRecommendedModel(null);
     setRecommendationError(null);
     setActiveTab("home");
+  };
+
+  const toggleCandidate = (candidateName: string) => {
+    setExcludedCandidates((current) =>
+      current.includes(candidateName)
+        ? current.filter((name) => name !== candidateName)
+        : [...current, candidateName],
+    );
   };
 
   const openAssetInputFromHome = () => {
@@ -106,6 +117,8 @@ function App() {
           inputs={inputs}
           model={model}
           assetPortfolio={assetPortfolio}
+          excludedCandidates={excludedCandidates}
+          onToggleCandidate={toggleCandidate}
           onOpenAssetInput={openAssetInputFromHome}
           onReset={resetGoal}
         />

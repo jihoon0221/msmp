@@ -1,9 +1,11 @@
 import {
+  AlertTriangle,
   ChartPie,
   X,
   GraduationCap,
   Lightbulb,
   Network,
+  Settings2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
@@ -19,18 +21,64 @@ type PortfolioDashboardProps = {
   inputs: FinancialInputs;
   model: PortfolioModel;
   assetPortfolio: AssetPortfolio;
+  excludedCandidates: string[];
+  onToggleCandidate: (candidateName: string) => void;
   onOpenAssetInput: () => void;
   onReset: () => void;
 };
 
-export function PortfolioDashboard({ inputs, model, assetPortfolio, onOpenAssetInput, onReset }: PortfolioDashboardProps) {
+export function PortfolioDashboard({
+  inputs,
+  model,
+  assetPortfolio,
+  excludedCandidates,
+  onToggleCandidate,
+  onOpenAssetInput,
+  onReset,
+}: PortfolioDashboardProps) {
   const [showMptInfo, setShowMptInfo] = useState(false);
   const [showRecommendedChart, setShowRecommendedChart] = useState(false);
+  const [candidateEditorOpen, setCandidateEditorOpen] = useState(false);
   const simulation = useMemo(() => computeSimulationStats(inputs, model), [inputs, model]);
   const assetAllocations = useMemo(() => buildAssetPortfolioAllocations(assetPortfolio), [assetPortfolio]);
   const assetCount = useMemo(() => countAssetPortfolioItems(assetPortfolio), [assetPortfolio]);
+  const recommendedAllocations = useMemo(() => {
+    const activeAllocations = model.allocations.filter((allocation) =>
+      allocation.candidates.some((candidate) => !excludedCandidates.includes(candidate.name)),
+    );
+    const totalWeight = activeAllocations.reduce((total, allocation) => total + allocation.weight, 0);
+
+    if (totalWeight === 0) return [];
+
+    const normalizedAllocations = activeAllocations.map((allocation) => {
+      const exactWeight = (allocation.weight / totalWeight) * 100;
+      return {
+        allocation,
+        weight: Math.floor(exactWeight),
+        remainder: exactWeight - Math.floor(exactWeight),
+      };
+    });
+    let remainingWeight = 100 - normalizedAllocations.reduce((total, item) => total + item.weight, 0);
+
+    normalizedAllocations
+      .map((item, index) => ({ index, remainder: item.remainder }))
+      .sort((a, b) => b.remainder - a.remainder)
+      .forEach(({ index }) => {
+        if (remainingWeight > 0) {
+          normalizedAllocations[index].weight += 1;
+          remainingWeight -= 1;
+        }
+      });
+
+    return normalizedAllocations.map(({ allocation, weight }) => ({ ...allocation, weight }));
+  }, [excludedCandidates, model.allocations]);
+  const includedCandidateCount = model.allocations.reduce(
+    (count, allocation) =>
+      count + allocation.candidates.filter((candidate) => !excludedCandidates.includes(candidate.name)).length,
+    0,
+  );
   const hasPortfolioAssets = assetAllocations.length > 0;
-  const displayedAllocations = hasPortfolioAssets && !showRecommendedChart ? assetAllocations : model.allocations;
+  const displayedAllocations = hasPortfolioAssets && !showRecommendedChart ? assetAllocations : recommendedAllocations;
   const chartTitle =
     hasPortfolioAssets && !showRecommendedChart
       ? "실제 자산 기준 구성 비중"
@@ -125,28 +173,138 @@ export function PortfolioDashboard({ inputs, model, assetPortfolio, onOpenAssetI
               <Network size={12} />
               부문별 적합 금융상품 후보군
             </h4>
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[9px] font-extrabold text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-blue-700"
+              onClick={() => setCandidateEditorOpen(true)}
+            >
+              <Settings2 size={11} />
+              편집
+            </button>
           </div>
-          <div className="space-y-3">
-            {model.allocations.map((allocation) => (
-              <div key={allocation.key}>
-                <p className="mb-1 text-[10px] font-black text-slate-700">{allocation.label}</p>
-                <div className="space-y-1.5">
-                  {allocation.candidates.map((candidate) => (
-                    <div key={candidate.name} className="rounded-lg bg-white p-2 text-[10px] text-slate-500">
-                      <div className="flex items-center justify-between gap-2">
-                        <strong className="text-slate-800">{candidate.name}</strong>
-                        <span className="rounded bg-blue-50 px-1.5 py-0.5 font-bold text-blue-700">{candidate.category}</span>
-                      </div>
-                      <p className="mt-1 leading-relaxed">{candidate.reason}</p>
+          {includedCandidateCount > 0 ? (
+            <div className="space-y-3">
+              {model.allocations.map((allocation) => {
+                const includedCandidates = allocation.candidates.filter(
+                  (candidate) => !excludedCandidates.includes(candidate.name),
+                );
+
+                if (includedCandidates.length === 0) return null;
+
+                return (
+                  <div key={allocation.key}>
+                    <p className="mb-1 text-[10px] font-black text-slate-700">{allocation.label}</p>
+                    <div className="space-y-1.5">
+                      {includedCandidates.map((candidate) => (
+                        <div key={candidate.name} className="rounded-lg bg-white p-2 text-[10px] text-slate-500">
+                          <div className="flex items-center justify-between gap-2">
+                            <strong className="text-slate-800">{candidate.name}</strong>
+                            <span className="rounded bg-blue-50 px-1.5 py-0.5 font-bold text-blue-700">{candidate.category}</span>
+                          </div>
+                          <p className="mt-1 leading-relaxed">{candidate.reason}</p>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[10px] font-extrabold">모든 추천 종목이 제외되었습니다.</p>
+                <p className="mt-0.5 text-[9px] leading-relaxed text-amber-700">편집에서 후보 종목을 다시 추가해 주세요.</p>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
 
       </Card>
+
+      {candidateEditorOpen ? (
+        <div className="absolute inset-0 z-[60] flex flex-col bg-slate-50">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 pb-4 pt-9">
+            <div>
+              <p className="mb-0.5 text-[10px] font-bold text-blue-600">추천 포트폴리오</p>
+              <h3 className="text-lg font-black text-slate-900">포트폴리오 종목 편집</h3>
+            </div>
+            <button
+              type="button"
+              aria-label="포트폴리오 종목 편집 닫기"
+              className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              onClick={() => setCandidateEditorOpen(false)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="no-scrollbar flex-1 overflow-y-auto px-5 py-5 pb-8">
+            <div className="mb-5 flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 p-3">
+              <Settings2 size={15} className="mt-0.5 shrink-0 text-blue-600" />
+              <p className="text-[10px] leading-relaxed text-blue-800">
+                추천 후보를 직접 추가하거나 제외할 수 있습니다.
+              </p>
+            </div>
+
+            <div className="space-y-5">
+              {model.allocations.map((allocation) => {
+                const includedCount = allocation.candidates.filter(
+                  (candidate) => !excludedCandidates.includes(candidate.name),
+                ).length;
+
+                return (
+                  <section key={allocation.key}>
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: allocation.color }} />
+                        <h4 className="text-xs font-extrabold text-slate-800">{allocation.label}</h4>
+                      </div>
+                      <span className="text-[9px] font-bold text-slate-400">
+                        {includedCount}/{allocation.candidates.length} 추가
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {allocation.candidates.map((candidate) => {
+                        const excluded = excludedCandidates.includes(candidate.name);
+
+                        return (
+                          <div key={candidate.name} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                                  <strong className="text-xs text-slate-900">{candidate.name}</strong>
+                                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold text-slate-600">
+                                    {candidate.category}
+                                  </span>
+                                </div>
+                                <p className="text-[9px] leading-relaxed text-slate-500">{candidate.reason}</p>
+                              </div>
+                              <button
+                                type="button"
+                                aria-pressed={!excluded}
+                                className={`shrink-0 rounded-full px-3 py-1.5 text-[9px] font-extrabold transition ${
+                                  excluded
+                                    ? "border border-slate-200 bg-slate-100 text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                    : "bg-blue-600 text-white shadow-sm hover:bg-blue-700"
+                                }`}
+                                onClick={() => onToggleCandidate(candidate.name)}
+                              >
+                                {excluded ? "제외됨" : "추가됨"}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showMptInfo ? (
         <div className="absolute inset-0 z-40 bg-slate-900/20 px-5 pt-28 backdrop-blur-[1px]" onClick={() => setShowMptInfo(false)}>
