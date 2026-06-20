@@ -7,11 +7,12 @@ import { ExploreView } from "./features/explore/ExploreView";
 import { OnboardingForm } from "./features/onboarding/OnboardingForm";
 import { PortfolioDashboard } from "./features/portfolio/PortfolioDashboard";
 import { ProfileView } from "./features/profile/ProfileView";
-import { emptyAssetPortfolio, summarizeAssetPortfolioByCurrency } from "./lib/assetCalculations";
-import { applyGoalAwarePortfolioModel, getPortfolioModel, defaultFinancialInputs } from "./lib/finance";
+import { emptyAssetPortfolio } from "./lib/assetCalculations";
+import { emptyAssetValuation } from "./lib/assetValuation";
+import { getFallbackPortfolioModel, defaultFinancialInputs } from "./lib/finance";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
-import { requestPortfolioRecommendation } from "./services/moneyPilotApi";
-import type { AppTab, AssetPortfolio, FinancialInputs, PortfolioModel } from "./types/domain";
+import { requestAssetValuation, requestPortfolioRecommendation } from "./services/moneyPilotApi";
+import type { AppTab, AssetPortfolio, AssetValuation, FinancialInputs, PortfolioModel } from "./types/domain";
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -19,27 +20,19 @@ function App() {
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [inputs, setInputs] = useState<FinancialInputs>(defaultFinancialInputs);
   const [assetPortfolio, setAssetPortfolio] = useState<AssetPortfolio>(emptyAssetPortfolio);
+  const [assetValuation, setAssetValuation] = useState<AssetValuation>(emptyAssetValuation);
   const [openAssetForm, setOpenAssetForm] = useState(false);
   const [portfolioDesigned, setPortfolioDesigned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
-  const assetTotalManwon = useMemo(() => {
-    const totalWon = summarizeAssetPortfolioByCurrency(assetPortfolio).reduce(
-      (total, summary) => total + summary.totalValue,
-      0,
-    );
-    return Math.round(totalWon / 10000);
-  }, [assetPortfolio]);
+  const assetTotalManwon = useMemo(() => Math.round(assetValuation.totalValueKrw / 10000), [assetValuation.totalValueKrw]);
   const inputsWithAssetTotal = useMemo(
     () => ({ ...inputs, currentAssetsManwon: assetTotalManwon }),
     [assetTotalManwon, inputs],
   );
-  const fallbackModel = useMemo(() => getPortfolioModel(inputsWithAssetTotal), [inputsWithAssetTotal]);
+  const fallbackModel = useMemo(() => getFallbackPortfolioModel(inputsWithAssetTotal), [inputsWithAssetTotal]);
   const [recommendedModel, setRecommendedModel] = useState<PortfolioModel | null>(null);
-  const model = useMemo(
-    () => (recommendedModel ? applyGoalAwarePortfolioModel(recommendedModel, inputsWithAssetTotal) : fallbackModel),
-    [fallbackModel, inputsWithAssetTotal, recommendedModel],
-  );
+  const model = recommendedModel ?? fallbackModel;
 
   useEffect(() => {
     if (!supabase) {
@@ -64,6 +57,7 @@ function App() {
       setSession(nextSession);
       if (!nextSession) {
         setAssetPortfolio(emptyAssetPortfolio);
+        setAssetValuation(emptyAssetValuation);
         setActiveTab("home");
       }
     });
@@ -73,6 +67,25 @@ function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function runValuation() {
+      try {
+        const nextValuation = await requestAssetValuation(assetPortfolio);
+        if (!ignore) setAssetValuation(nextValuation);
+      } catch (error) {
+        console.warn("Asset valuation API unavailable.", error);
+        if (!ignore) setAssetValuation(emptyAssetValuation);
+      }
+    }
+
+    void runValuation();
+    return () => {
+      ignore = true;
+    };
+  }, [assetPortfolio]);
 
   const analyze = async () => {
     setLoading(true);
@@ -112,6 +125,7 @@ function App() {
           <OnboardingForm
             inputs={inputsWithAssetTotal}
             assetPortfolio={assetPortfolio}
+            assetValuation={assetValuation}
             error={recommendationError}
             onChange={setInputs}
             onOpenAssetsView={() => setActiveTab("assets")}
@@ -123,7 +137,7 @@ function App() {
         <PortfolioDashboard
           inputs={inputsWithAssetTotal}
           model={model}
-          assetPortfolio={assetPortfolio}
+          assetValuation={assetValuation}
           onRebalanceNow={() => setActiveTab("assets")}
           onReset={resetGoal}
         />
@@ -135,6 +149,7 @@ function App() {
         <AssetsView
           inputs={inputsWithAssetTotal}
           model={model}
+          assetValuation={assetValuation}
           openAssetForm={openAssetForm}
           onAssetFormOpened={() => setOpenAssetForm(false)}
           onAssetPortfolioChange={setAssetPortfolio}

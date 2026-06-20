@@ -18,11 +18,8 @@ export const riskOrder = ["stable", "neutral", "aggressive"] as const;
 export const getMonthlyInvestable = (inputs: FinancialInputs) =>
   Math.max(0, inputs.monthlySalaryManwon - inputs.monthlySpendManwon);
 
-export const getPortfolioModel = (inputs: FinancialInputs): PortfolioModel =>
+export const getFallbackPortfolioModel = (inputs: FinancialInputs): PortfolioModel =>
   buildGoalAwarePortfolioModel(portfolioModels[inputs.riskProfile], inputs);
-
-export const applyGoalAwarePortfolioModel = (model: PortfolioModel, inputs: FinancialInputs): PortfolioModel =>
-  buildGoalAwarePortfolioModel(model, inputs);
 
 export const simulateMonths = (
   initialManwon: number,

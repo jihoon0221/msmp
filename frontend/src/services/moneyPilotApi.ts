@@ -1,4 +1,6 @@
 import type {
+  AssetPortfolio,
+  AssetValuation,
   FinancialInputs,
   PortfolioAllocation,
   PortfolioModel,
@@ -41,6 +43,7 @@ export async function requestPortfolioRecommendation(inputs: FinancialInputs): P
       type: inputs.goalType,
       targetAmount: inputs.goalAmountManwon * 10000,
       years: inputs.goalYears,
+      customLabel: inputs.customGoalLabel,
     },
     financialProfile: {
       currentAssets: inputs.currentAssetsManwon * 10000,
@@ -60,6 +63,10 @@ export async function requestPortfolioRecommendation(inputs: FinancialInputs): P
     rationaleFactors: response.rationale.factors,
     allocations: response.allocations,
   };
+}
+
+export async function requestAssetValuation(portfolio: AssetPortfolio): Promise<AssetValuation> {
+  return postJson<AssetValuation>("/api/v1/assets/valuation", portfolio);
 }
 
 export async function requestRelatedNews(params: {

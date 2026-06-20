@@ -6,16 +6,15 @@ import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { getGoalLabel } from "../../constants/goals";
-import { calculateStockAssetMetrics } from "../../lib/assetCalculations";
 import { computeSimulationStats } from "../../lib/finance";
 import { formatManwon } from "../../lib/format";
-import type { AssetPortfolio, FinancialInputs, PortfolioModel } from "../../types/domain";
+import type { AssetValuation, FinancialInputs, PortfolioModel } from "../../types/domain";
 
 
 type PortfolioDashboardProps = {
   inputs: FinancialInputs;
   model: PortfolioModel;
-  assetPortfolio: AssetPortfolio;
+  assetValuation: AssetValuation;
   onRebalanceNow: () => void;
   onReset: () => void;
 };
@@ -49,7 +48,7 @@ type GoalFeasibility = {
 
 const REBALANCE_SUPPRESS_UNTIL_KEY = "moneyPilotRebalanceSuppressUntil";
 
-export function PortfolioDashboard({ inputs, model, assetPortfolio, onRebalanceNow, onReset }: PortfolioDashboardProps) {
+export function PortfolioDashboard({ inputs, model, assetValuation, onRebalanceNow, onReset }: PortfolioDashboardProps) {
   const [rebalanceDismissed, setRebalanceDismissed] = useState(false);
   const [rebalanceSuppressUntil, setRebalanceSuppressUntil] = useState(() => getStoredRebalanceSuppressUntil());
   const simulation = useMemo(() => computeSimulationStats(inputs, model), [inputs, model]);
@@ -58,13 +57,9 @@ export function PortfolioDashboard({ inputs, model, assetPortfolio, onRebalanceN
     () => getPortfolioDecisionExplanation(inputs, model, feasibility),
     [feasibility, inputs, model],
   );
-  const assetAllocations = useMemo(
-    () => buildEnteredAssetAllocations(assetPortfolio, model.allocations),
-    [assetPortfolio, model.allocations],
-  );
   const rebalanceDeviations = useMemo(
-    () => getRebalanceDeviations(model.allocations, assetAllocations),
-    [assetAllocations, model.allocations],
+    () => getRebalanceDeviations(model.allocations, assetValuation.allocations),
+    [assetValuation.allocations, model.allocations],
   );
   const shouldShowRebalanceModal =
     rebalanceDeviations.length > 0 && !rebalanceDismissed && Date.now() >= rebalanceSuppressUntil;
@@ -103,7 +98,7 @@ export function PortfolioDashboard({ inputs, model, assetPortfolio, onRebalanceN
 
         <div className="mb-6 rounded-[28px] border border-slate-700 bg-slate-900 p-5 shadow-sm">
           <AllocationStack title="추천 비중" allocations={model.allocations} />
-          <AllocationStack title="내 자산 기준 비중" allocations={assetAllocations} emptyMessage="입력된 자산이 없습니다." />
+          <AllocationStack title="내 자산 기준 비중" allocations={assetValuation.allocations} emptyMessage="입력된 자산이 없습니다." />
         </div>
 
         <div className="mb-6 rounded-xl border border-blue-800 bg-blue-950/40 p-4">
@@ -312,28 +307,6 @@ function MetricTile({ label, value }: { label: string; value: string }) {
       <p className="truncate text-[11px] font-black text-slate-100">{value}</p>
     </div>
   );
-}
-
-function buildEnteredAssetAllocations(portfolio: AssetPortfolio, modelAllocations: AllocationSummary[]): AllocationSummary[] {
-  const stockValue = portfolio.stockAssets.reduce((total, asset) => {
-    const metrics = calculateStockAssetMetrics(asset);
-    return total + (metrics.currentValue ?? metrics.purchaseValue);
-  }, 0);
-  const depositValue = portfolio.depositAssets.reduce((total, asset) => total + asset.currentAmount, 0);
-  const bondValue = portfolio.bondAssets.reduce((total, asset) => total + asset.currentValue, 0);
-  const totalValue = stockValue + depositValue + bondValue;
-  const valueByKey: Record<string, number> = {
-    "stock-etf": stockValue,
-    "deposit-savings": depositValue,
-    bond: bondValue,
-  };
-
-  return modelAllocations.map((allocation) => ({
-    key: allocation.key,
-    label: allocation.label,
-    color: allocation.color,
-    weight: totalValue > 0 ? Math.round(((valueByKey[allocation.key] ?? 0) / totalValue) * 100) : 0,
-  }));
 }
 
 function getRebalanceDeviations(targetAllocations: AllocationSummary[], actualAllocations: AllocationSummary[]) {

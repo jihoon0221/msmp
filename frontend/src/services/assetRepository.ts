@@ -57,10 +57,25 @@ type BondAssetRow = {
   principal_amount: number | string;
   current_value: number | string;
   coupon_rate: number | string | null;
+  purchase_fx_rate: number | string | null;
   purchase_date: string | null;
   maturity_date: string | null;
   memo: string | null;
 };
+
+type ExchangeRateRow = {
+  base_currency: string;
+  quote_currency: string;
+  rate: number | string;
+  rate_date: string;
+  fetched_at: string;
+};
+
+type ExchangeRateResponse = {
+  rate?: ExchangeRateRow;
+};
+
+const LATEST_RATE_MAX_AGE_DAYS = 7;
 
 export type StockAssetInput = {
   stockId: string;
@@ -84,8 +99,8 @@ export type DepositAssetInput = {
 export type BondAssetInput = {
   bondName: string;
   issuer?: string;
+  currency: string;
   principalAmount: number;
-  currentValue: number;
   couponRate?: number;
   purchaseDate?: string;
   maturityDate?: string;
@@ -138,7 +153,7 @@ export async function listAssetPortfolio(): Promise<AssetPortfolio> {
         .order("created_at", { ascending: false }),
       client
         .from("user_bond_assets")
-        .select("id, bond_name, issuer, currency, principal_amount, current_value, coupon_rate, purchase_date, maturity_date, memo")
+        .select("id, bond_name, issuer, currency, principal_amount, current_value, coupon_rate, purchase_fx_rate, purchase_date, maturity_date, memo")
         .order("created_at", { ascending: false }),
     ]);
 
@@ -147,13 +162,23 @@ export async function listAssetPortfolio(): Promise<AssetPortfolio> {
   if (bondError) throw bondError;
 
   const typedStockRows = (stockRows ?? []) as unknown as StockAssetRow[];
+  const typedBondRows = (bondRows ?? []) as BondAssetRow[];
   const stockIds = typedStockRows.map((row) => row.stock_id);
+  const bondRowsWithPurchaseRates = await backfillMissingBondPurchaseFxRates(typedBondRows);
+  const exchangeRateCurrencies = filterExchangeRateCurrencies([
+    ...typedStockRows.map((row) => row.stocks?.currency ?? ""),
+    ...bondRowsWithPurchaseRates.map((row) => row.currency),
+  ]);
+  await refreshExchangeRates(exchangeRateCurrencies);
   const latestPrices = await getLatestStockPrices(stockIds);
+  const latestExchangeRates = await getLatestExchangeRates(exchangeRateCurrencies);
 
   return {
-    stockAssets: typedStockRows.map((row) => mapStockAssetRow(row, latestPrices.get(row.stock_id))),
+    stockAssets: typedStockRows.map((row) =>
+      mapStockAssetRow(row, latestPrices.get(row.stock_id), latestExchangeRates.get(row.stocks?.currency ?? "")),
+    ),
     depositAssets: ((depositRows ?? []) as DepositAssetRow[]).map(mapDepositAssetRow),
-    bondAssets: ((bondRows ?? []) as BondAssetRow[]).map(mapBondAssetRow),
+    bondAssets: bondRowsWithPurchaseRates.map((row) => mapBondAssetRow(row, latestExchangeRates.get(row.currency))),
   };
 }
 
@@ -241,34 +266,41 @@ export async function updateDepositAsset(id: string, input: DepositAssetInput) {
 export async function createBondAsset(input: BondAssetInput) {
   const client = requireSupabaseClient();
   const userId = await requireUserId();
+  const purchaseFxRate = await resolveBondPurchaseFxRate(input);
 
   const { error } = await client.from("user_bond_assets").insert({
     user_id: userId,
     bond_name: input.bondName,
     issuer: emptyToNull(input.issuer),
+    currency: input.currency,
     principal_amount: input.principalAmount,
-    current_value: input.currentValue,
+    current_value: input.principalAmount,
     coupon_rate: input.couponRate ?? null,
+    purchase_fx_rate: purchaseFxRate,
     purchase_date: emptyToNull(input.purchaseDate),
     maturity_date: emptyToNull(input.maturityDate),
     memo: emptyToNull(input.memo),
   });
 
   if (error) throw error;
+  await refreshExchangeRates([input.currency]);
 }
 
 export async function updateBondAsset(id: string, input: BondAssetInput) {
   const client = requireSupabaseClient();
   await requireUserId();
+  const purchaseFxRate = await resolveBondPurchaseFxRate(input);
 
   const { error } = await client
     .from("user_bond_assets")
     .update({
       bond_name: input.bondName,
       issuer: emptyToNull(input.issuer),
+      currency: input.currency,
       principal_amount: input.principalAmount,
-      current_value: input.currentValue,
+      current_value: input.principalAmount,
       coupon_rate: input.couponRate ?? null,
+      purchase_fx_rate: purchaseFxRate,
       purchase_date: emptyToNull(input.purchaseDate),
       maturity_date: emptyToNull(input.maturityDate),
       memo: emptyToNull(input.memo),
@@ -276,6 +308,7 @@ export async function updateBondAsset(id: string, input: BondAssetInput) {
     .eq("id", id);
 
   if (error) throw error;
+  await refreshExchangeRates([input.currency]);
 }
 
 export async function deleteAsset(assetType: "stock" | "deposit" | "bond", id: string) {
@@ -303,6 +336,21 @@ export async function refreshStockPrices(stockIds: string[]) {
   if (error) {
     console.warn("Failed to refresh stock prices", error);
   }
+}
+
+export async function refreshExchangeRates(currencies: string[]) {
+  const targetCurrencies = filterExchangeRateCurrencies(currencies);
+  if (targetCurrencies.length === 0) return;
+
+  await Promise.all(
+    targetCurrencies.map(async (currency) => {
+      try {
+        await invokeExchangeRate(currency, "KRW");
+      } catch (error) {
+        console.warn("Failed to refresh exchange rate", currency, error);
+      }
+    }),
+  );
 }
 
 function requireSupabaseClient() {
@@ -344,6 +392,85 @@ async function getLatestStockPrices(stockIds: string[]) {
   return latestPrices;
 }
 
+async function getLatestExchangeRates(currencies: string[]) {
+  const client = requireSupabaseClient();
+  const latestRates = new Map<string, ExchangeRateRow>();
+  const targetCurrencies = filterExchangeRateCurrencies(currencies);
+  if (targetCurrencies.length === 0) return latestRates;
+
+  const oldestLatestRateDate = toDateString(Date.now() - LATEST_RATE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+  const { data, error } = await client
+    .from("exchange_rates")
+    .select("base_currency, quote_currency, rate, rate_date, fetched_at")
+    .in("base_currency", targetCurrencies)
+    .eq("quote_currency", "KRW")
+    .eq("source", "frankfurter")
+    .gte("rate_date", oldestLatestRateDate)
+    .order("rate_date", { ascending: false })
+    .order("fetched_at", { ascending: false });
+
+  if (error) throw error;
+
+  for (const row of (data ?? []) as ExchangeRateRow[]) {
+    if (!latestRates.has(row.base_currency)) latestRates.set(row.base_currency, row);
+  }
+
+  return latestRates;
+}
+
+async function backfillMissingBondPurchaseFxRates(rows: BondAssetRow[]) {
+  const client = requireSupabaseClient();
+
+  return Promise.all(
+    rows.map(async (row) => {
+      if (row.currency !== "USD" || row.purchase_fx_rate != null || !row.purchase_date) return row;
+
+      try {
+        const rate = await invokeExchangeRate(row.currency, "KRW", row.purchase_date);
+        const purchaseFxRate = Number(rate.rate);
+        const { error } = await client
+          .from("user_bond_assets")
+          .update({ purchase_fx_rate: purchaseFxRate })
+          .eq("id", row.id);
+
+        if (error) throw error;
+        return { ...row, purchase_fx_rate: purchaseFxRate };
+      } catch (error) {
+        console.warn("Failed to backfill bond purchase exchange rate", row.id, error);
+        return row;
+      }
+    }),
+  );
+}
+
+function filterExchangeRateCurrencies(currencies: string[]) {
+  return Array.from(new Set(currencies.filter((currency) => currency === "USD")));
+}
+
+async function resolveBondPurchaseFxRate(input: BondAssetInput) {
+  if (input.currency === "KRW") return null;
+  if (input.currency !== "USD") throw new AssetRepositoryError("현재 USD 채권만 지원합니다.");
+  if (!input.purchaseDate) throw new AssetRepositoryError("USD 채권은 매수일이 필요합니다.");
+
+  const rate = await invokeExchangeRate(input.currency, "KRW", input.purchaseDate);
+  return Number(rate.rate);
+}
+
+async function invokeExchangeRate(baseCurrency: string, quoteCurrency: string, rateDate?: string) {
+  const client = requireSupabaseClient();
+  const { data, error } = await client.functions.invoke<ExchangeRateResponse>("get-exchange-rate", {
+    body: {
+      base_currency: baseCurrency,
+      quote_currency: quoteCurrency,
+      rate_date: rateDate,
+    },
+  });
+
+  if (error) throw error;
+  if (!data?.rate) throw new AssetRepositoryError("환율 정보를 불러오지 못했습니다.");
+  return data.rate;
+}
+
 function mapStockRow(row: StockRow): Stock {
   return {
     id: row.id,
@@ -357,17 +484,19 @@ function mapStockRow(row: StockRow): Stock {
   };
 }
 
-function mapStockAssetRow(row: StockAssetRow, price?: StockPriceRow): StockAsset {
+function mapStockAssetRow(row: StockAssetRow, price?: StockPriceRow, latestFxRate?: ExchangeRateRow): StockAsset {
   if (!row.stocks) {
     throw new AssetRepositoryError("종목 정보를 찾지 못했습니다.");
   }
 
+  const stock = mapStockRow(row.stocks);
   return {
     id: row.id,
-    stock: mapStockRow(row.stocks),
+    stock,
     quantity: Number(row.quantity),
     averageBuyPrice: Number(row.average_buy_price),
     latestPrice: price ? Number(price.price) : null,
+    latestFxRate: stock.currency === "KRW" ? 1 : latestFxRate ? Number(latestFxRate.rate) : null,
     changeRate: price?.change_rate == null ? null : Number(price.change_rate),
     memo: row.memo,
   };
@@ -389,7 +518,7 @@ function mapDepositAssetRow(row: DepositAssetRow): DepositAsset {
   };
 }
 
-function mapBondAssetRow(row: BondAssetRow): BondAsset {
+function mapBondAssetRow(row: BondAssetRow, latestFxRate?: ExchangeRateRow): BondAsset {
   return {
     id: row.id,
     bondName: row.bond_name,
@@ -398,6 +527,8 @@ function mapBondAssetRow(row: BondAssetRow): BondAsset {
     principalAmount: Number(row.principal_amount),
     currentValue: Number(row.current_value),
     couponRate: row.coupon_rate == null ? null : Number(row.coupon_rate),
+    purchaseFxRate: row.purchase_fx_rate == null ? null : Number(row.purchase_fx_rate),
+    latestFxRate: row.currency === "KRW" ? 1 : latestFxRate ? Number(latestFxRate.rate) : null,
     purchaseDate: row.purchase_date,
     maturityDate: row.maturity_date,
     memo: row.memo,
@@ -407,4 +538,8 @@ function mapBondAssetRow(row: BondAssetRow): BondAsset {
 function emptyToNull(value?: string) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function toDateString(value: number) {
+  return new Date(value).toISOString().slice(0, 10);
 }

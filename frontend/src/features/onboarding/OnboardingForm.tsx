@@ -1,15 +1,14 @@
 import { BarChart3, ChartNoAxesColumn, Scale, Target, Wallet } from "lucide-react";
-import { useMemo } from "react";
 import { goalOptions } from "../../constants/goals";
-import { countAssetPortfolioItems, summarizeAssetPortfolioByCurrency } from "../../lib/assetCalculations";
 import { getMonthlyInvestable } from "../../lib/finance";
 import { formatManwon, formatWon } from "../../lib/format";
-import type { AssetPortfolio, FinancialInputs, RiskProfile } from "../../types/domain";
+import type { AssetPortfolio, AssetValuation, FinancialInputs, RiskProfile } from "../../types/domain";
 import { Button } from "../../components/ui/Button";
 
 type OnboardingFormProps = {
   inputs: FinancialInputs;
   assetPortfolio: AssetPortfolio;
+  assetValuation: AssetValuation;
   error: string | null;
   onChange: (inputs: FinancialInputs) => void;
   onOpenAssetsView: () => void;
@@ -25,18 +24,15 @@ const riskOptions: Array<{ value: RiskProfile; label: string }> = [
 export function OnboardingForm({
   inputs,
   assetPortfolio,
+  assetValuation,
   error,
   onChange,
   onOpenAssetsView,
   onAnalyze,
 }: OnboardingFormProps) {
   const monthlyInvestable = getMonthlyInvestable(inputs);
-  const assetSummaries = useMemo(() => summarizeAssetPortfolioByCurrency(assetPortfolio), [assetPortfolio]);
-  const assetCount = useMemo(() => countAssetPortfolioItems(assetPortfolio), [assetPortfolio]);
-  const totalAssetValue = useMemo(
-    () => assetSummaries.reduce((total, summary) => total + summary.totalValue, 0),
-    [assetSummaries],
-  );
+  const assetCount = assetPortfolio.stockAssets.length + assetPortfolio.depositAssets.length + assetPortfolio.bondAssets.length;
+  const totalAssetValue = assetValuation.totalValueKrw;
 
   const update = <Key extends keyof FinancialInputs>(key: Key, value: FinancialInputs[Key]) => {
     onChange({ ...inputs, [key]: value });

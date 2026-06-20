@@ -2,12 +2,7 @@ import { CalendarDays, ChartNoAxesColumn, Pencil, Plus, Search, Trash2, Wallet, 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import {
-  calculateBondAssetMetrics,
-  calculateStockAssetMetrics,
-  emptyAssetPortfolio,
-  summarizeAssetPortfolioByCurrency,
-} from "../../lib/assetCalculations";
+import { emptyAssetPortfolio } from "../../lib/assetCalculations";
 import { formatPercent, formatWon } from "../../lib/format";
 import {
   createBondAsset,
@@ -23,11 +18,23 @@ import {
   type DepositAssetInput,
   type StockAssetInput,
 } from "../../services/assetRepository";
-import type { AssetPortfolio, BondAsset, DepositAsset, FinancialInputs, PortfolioModel, Stock, StockAsset } from "../../types/domain";
+import type {
+  AssetPortfolio,
+  AssetValuation,
+  BondAsset,
+  BondAssetValuation,
+  DepositAsset,
+  FinancialInputs,
+  PortfolioModel,
+  Stock,
+  StockAsset,
+  StockAssetValuation,
+} from "../../types/domain";
 
 type AssetsViewProps = {
   inputs: FinancialInputs;
   model: PortfolioModel;
+  assetValuation: AssetValuation;
   openAssetForm: boolean;
   onAssetFormOpened: () => void;
   onAssetPortfolioChange: (portfolio: AssetPortfolio) => void;
@@ -77,8 +84,8 @@ const initialDepositForm: DepositFormState = {
 const initialBondForm = {
   bondName: "",
   issuer: "",
+  currency: "KRW",
   principalAmount: "",
-  currentValue: "",
   couponRate: "",
   purchaseDate: "",
   maturityDate: "",
@@ -94,6 +101,7 @@ const assetTypeLabels: Record<AssetType, string> = {
 export function AssetsView({
   inputs,
   model,
+  assetValuation,
   openAssetForm,
   onAssetFormOpened,
   onAssetPortfolioChange,
@@ -112,8 +120,16 @@ export function AssetsView({
   const [bondForm, setBondForm] = useState(initialBondForm);
   const [editingAsset, setEditingAsset] = useState<EditingAsset | null>(null);
 
-  const summaries = useMemo(() => summarizeAssetPortfolioByCurrency(portfolio), [portfolio]);
-  const assetAllocations = useMemo(() => buildEnteredAssetAllocations(portfolio, model.allocations), [model.allocations, portfolio]);
+  const summaries = assetValuation.currencySummaries;
+  const assetAllocations = assetValuation.allocations;
+  const stockValuationsById = useMemo(
+    () => new Map(assetValuation.stockAssets.map((valuation) => [valuation.id, valuation])),
+    [assetValuation.stockAssets],
+  );
+  const bondValuationsById = useMemo(
+    () => new Map(assetValuation.bondAssets.map((valuation) => [valuation.id, valuation])),
+    [assetValuation.bondAssets],
+  );
   const fallbackValue = inputs.currentAssetsManwon * 10000;
 
   useEffect(() => {
@@ -217,8 +233,8 @@ export function AssetsView({
     setBondForm({
       bondName: asset.bondName,
       issuer: asset.issuer ?? "",
+      currency: asset.currency,
       principalAmount: String(asset.principalAmount),
-      currentValue: String(asset.currentValue),
       couponRate: asset.couponRate == null ? "" : String(asset.couponRate),
       purchaseDate: asset.purchaseDate ?? "",
       maturityDate: asset.maturityDate ?? "",
@@ -288,16 +304,16 @@ export function AssetsView({
     const input: BondAssetInput = {
       bondName: bondForm.bondName,
       issuer: bondForm.issuer,
+      currency: bondForm.currency,
       principalAmount: Number(bondForm.principalAmount),
-      currentValue: Number(bondForm.principalAmount),
       couponRate: bondForm.couponRate ? Number(bondForm.couponRate) : undefined,
       purchaseDate: bondForm.purchaseDate,
       maturityDate: bondForm.maturityDate,
       memo: bondForm.memo,
     };
 
-    if (!input.bondName.trim() || input.principalAmount < 0) {
-      setError("채권명과 투자 원금을 확인해주세요.");
+    if (!input.bondName.trim() || input.principalAmount < 0 || (input.currency === "USD" && !input.purchaseDate)) {
+      setError("채권명, 투자 원금, USD 채권의 매수일을 확인해주세요.");
       return;
     }
 
@@ -365,6 +381,14 @@ export function AssetsView({
             <h3 className="text-2xl font-black">{formatWon(fallbackValue)}</h3>
           )}
         </div>
+        <a
+          className="relative text-[9px] font-semibold text-blue-100 underline-offset-2 hover:underline"
+          href="https://frankfurter.dev"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Rates by Frankfurter
+        </a>
       </section>
 
       <Card className="mb-5 bg-slate-900 border-slate-700">
@@ -382,6 +406,8 @@ export function AssetsView({
 
       <AssetSections
         portfolio={portfolio}
+        stockValuationsById={stockValuationsById}
+        bondValuationsById={bondValuationsById}
         onAdd={openFormForAssetType}
         onEditStock={openStockEditor}
         onEditDeposit={openDepositEditor}
@@ -505,6 +531,22 @@ export function AssetsView({
             {assetType === "bond" ? (
               <div className="space-y-3">
                 <TextInput label="채권명" value={bondForm.bondName} onChange={(value) => setBondForm((current) => ({ ...current, bondName: value }))} />
+                <label>
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-400">통화</span>
+                  <select
+                    value={bondForm.currency}
+                    onChange={(event) =>
+                      setBondForm((current) => ({
+                        ...current,
+                        currency: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs font-semibold text-slate-100"
+                  >
+                    <option value="KRW">KRW</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </label>
                 <MoneyInput label="투자 원금" value={bondForm.principalAmount} onChange={(value) => setBondForm((current) => ({ ...current, principalAmount: value }))} />
                 <TextInput label="발행기관" value={bondForm.issuer} onChange={(value) => setBondForm((current) => ({ ...current, issuer: value }))} />
                 <NumberInput label="표면금리" value={bondForm.couponRate} onChange={(value) => setBondForm((current) => ({ ...current, couponRate: value }))} />
@@ -525,6 +567,8 @@ export function AssetsView({
 
 function AssetSections({
   portfolio,
+  stockValuationsById,
+  bondValuationsById,
   onAdd,
   onEditStock,
   onEditDeposit,
@@ -532,6 +576,8 @@ function AssetSections({
   onRemove,
 }: {
   portfolio: AssetPortfolio;
+  stockValuationsById: Map<string, StockAssetValuation>;
+  bondValuationsById: Map<string, BondAssetValuation>;
   onAdd: (type: AssetType) => void;
   onEditStock: (asset: StockAsset) => void;
   onEditDeposit: (asset: DepositAsset) => void;
@@ -544,18 +590,16 @@ function AssetSections({
         <SectionTitle title="주식/ETF" count={portfolio.stockAssets.length} onAdd={() => onAdd("stock")} />
         <div className="space-y-2.5">
           {portfolio.stockAssets.map((asset) => {
-            const metrics = calculateStockAssetMetrics(asset);
+            const valuation = stockValuationsById.get(asset.id);
             return (
               <AssetRow
                 key={asset.id}
                 title={asset.stock.name}
                 subtitle={`${asset.stock.symbol} · ${asset.stock.market} · ${asset.stock.currency}`}
-                value={metrics.currentValue == null ? "가격 조회 필요" : formatWon(metrics.currentValue)}
-                detail={`수량 ${asset.quantity} · 평균 ${formatWon(asset.averageBuyPrice)} · 현재 ${
-                  asset.latestPrice == null ? "조회 필요" : formatWon(asset.latestPrice)
-                }`}
-                tone={metrics.profitLoss == null ? "neutral" : metrics.profitLoss >= 0 ? "gain" : "loss"}
-                badge={metrics.returnPercent == null ? undefined : formatPercent(metrics.returnPercent)}
+                value={formatStockAssetValue(asset, valuation)}
+                detail={formatStockAssetDetail(asset, valuation)}
+                tone={valuation?.profitLossNative == null ? "neutral" : valuation.profitLossNative >= 0 ? "gain" : "loss"}
+                badge={valuation?.returnPercent == null ? undefined : formatPercent(valuation.returnPercent)}
                 onEdit={() => onEditStock(asset)}
                 onRemove={() => onRemove("stock", asset.id)}
               />
@@ -587,16 +631,20 @@ function AssetSections({
         <SectionTitle title="채권" count={portfolio.bondAssets.length} onAdd={() => onAdd("bond")} />
         <div className="space-y-2.5">
           {portfolio.bondAssets.map((asset) => {
-            const metrics = calculateBondAssetMetrics(asset);
+            const valuation = bondValuationsById.get(asset.id);
             return (
               <AssetRow
                 key={asset.id}
                 title={asset.bondName}
                 subtitle={asset.issuer ?? "발행기관 미입력"}
-                value={formatWon(asset.currentValue)}
-                detail={`원금 ${formatWon(asset.principalAmount)}`}
-                tone={metrics.profitLoss >= 0 ? "gain" : "loss"}
-                badge={formatPercent(metrics.returnPercent)}
+                value={valuation ? formatWon(valuation.currentValueKrw) : "계산 대기"}
+                detail={`${asset.currency} 원금 ${formatAmount(asset.principalAmount)} · 연 ${asset.couponRate ?? 0}%${
+                  asset.currency === "USD" && valuation
+                    ? ` · 매수 환율 ${formatAmount(valuation.purchaseFxRate)} · 현재 환율 ${formatAmount(valuation.currentFxRate)}`
+                    : ""
+                }`}
+                tone={!valuation ? "neutral" : valuation.profitLossKrw >= 0 ? "gain" : "loss"}
+                badge={valuation ? formatPercent(valuation.returnPercent) : undefined}
                 onEdit={() => onEditBond(asset)}
                 onRemove={() => onRemove("bond", asset.id)}
               />
@@ -841,6 +889,38 @@ function formatNumericInput(value: string) {
   return digits ? Number(digits).toLocaleString("ko-KR") : "";
 }
 
+function formatAmount(value: number) {
+  return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 }).format(value);
+}
+
+function formatStockAssetValue(asset: StockAsset, valuation?: StockAssetValuation) {
+  if (!valuation || valuation.currentValueNative == null) return "가격 조회 필요";
+
+  const nativeValue = formatCurrencyAmount(asset.stock.currency, valuation.currentValueNative);
+  if (asset.stock.currency !== "USD") return nativeValue;
+
+  if (valuation.valueKrw == null) return `${nativeValue} (KRW 조회 필요)`;
+  return `${nativeValue} (${formatWon(valuation.valueKrw)})`;
+}
+
+function formatStockAssetDetail(asset: StockAsset, valuation?: StockAssetValuation) {
+  const currentPrice = asset.latestPrice == null ? "조회 필요" : formatCurrencyAmount(asset.stock.currency, asset.latestPrice);
+  const fxRate = asset.stock.currency === "USD" && valuation?.fxRate ? ` · 환율 ${formatAmount(valuation.fxRate)}` : "";
+  return `수량 ${formatAmount(asset.quantity)} · 평균 ${formatCurrencyAmount(asset.stock.currency, asset.averageBuyPrice)} · 현재 ${currentPrice}${fxRate}`;
+}
+
+function formatCurrencyAmount(currency: string, value: number) {
+  if (currency === "KRW") return formatWon(value);
+  if (currency === "USD") {
+    return `$${new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)}`;
+  }
+
+  return `${currency} ${formatAmount(value)}`;
+}
+
 function formatDateInput(value: string) {
   const digits = value.replace(/[^\d]/g, "").slice(0, 8);
   const year = digits.slice(0, 4);
@@ -848,26 +928,4 @@ function formatDateInput(value: string) {
   const day = digits.slice(6, 8);
 
   return [year, month, day].filter(Boolean).join("-");
-}
-
-function buildEnteredAssetAllocations(portfolio: AssetPortfolio, modelAllocations: AllocationSummary[]): AllocationSummary[] {
-  const stockValue = portfolio.stockAssets.reduce((total, asset) => {
-    const metrics = calculateStockAssetMetrics(asset);
-    return total + (metrics.currentValue ?? metrics.purchaseValue);
-  }, 0);
-  const depositValue = portfolio.depositAssets.reduce((total, asset) => total + asset.currentAmount, 0);
-  const bondValue = portfolio.bondAssets.reduce((total, asset) => total + asset.currentValue, 0);
-  const totalValue = stockValue + depositValue + bondValue;
-  const valueByKey: Record<string, number> = {
-    "stock-etf": stockValue,
-    "deposit-savings": depositValue,
-    bond: bondValue,
-  };
-
-  return modelAllocations.map((allocation) => ({
-    key: allocation.key,
-    label: allocation.label,
-    color: allocation.color,
-    weight: totalValue > 0 ? Math.round(((valueByKey[allocation.key] ?? 0) / totalValue) * 100) : 0,
-  }));
 }

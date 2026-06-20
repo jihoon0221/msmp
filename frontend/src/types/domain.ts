@@ -85,6 +85,7 @@ export type StockAsset = {
   quantity: number;
   averageBuyPrice: number;
   latestPrice: number | null;
+  latestFxRate: number | null;
   changeRate: number | null;
   memo: string | null;
 };
@@ -111,6 +112,8 @@ export type BondAsset = {
   principalAmount: number;
   currentValue: number;
   couponRate: number | null;
+  purchaseFxRate: number | null;
+  latestFxRate: number | null;
   purchaseDate: string | null;
   maturityDate: string | null;
   memo: string | null;
@@ -120,6 +123,58 @@ export type AssetPortfolio = {
   stockAssets: StockAsset[];
   depositAssets: DepositAsset[];
   bondAssets: BondAsset[];
+};
+
+export type AssetCurrencySummary = {
+  currency: string;
+  totalValue: number;
+};
+
+export type AssetAllocationValuation = Pick<PortfolioAllocation, "key" | "label" | "weight" | "color"> & {
+  valueKrw: number;
+};
+
+export type StockAssetValuation = {
+  id: string;
+  currency: string;
+  purchaseValueNative: number;
+  currentValueNative: number | null;
+  effectiveValueNative: number;
+  purchaseValueKrw: number | null;
+  valueKrw: number | null;
+  profitLossNative: number | null;
+  returnPercent: number | null;
+  fxRate: number | null;
+};
+
+export type DepositAssetValuation = {
+  id: string;
+  currency: string;
+  valueNative: number;
+  valueKrw: number | null;
+  fxRate: number | null;
+};
+
+export type BondAssetValuation = {
+  id: string;
+  currency: string;
+  principalValueKrw: number;
+  currentValueKrw: number;
+  profitLossKrw: number;
+  returnPercent: number;
+  purchaseFxRate: number;
+  currentFxRate: number;
+  accruedValueNative: number;
+};
+
+export type AssetValuation = {
+  totalValueKrw: number;
+  currencySummaries: AssetCurrencySummary[];
+  allocations: AssetAllocationValuation[];
+  stockAssets: StockAssetValuation[];
+  depositAssets: DepositAssetValuation[];
+  bondAssets: BondAssetValuation[];
+  generatedAt: string;
 };
 
 export type ModalContent = {
