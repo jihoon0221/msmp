@@ -1,4 +1,4 @@
-import { CalendarDays, ChartNoAxesColumn, Plus, Search, Trash2, Wallet, X } from "lucide-react";
+import { CalendarDays, ChartNoAxesColumn, Pencil, Plus, Search, Trash2, Wallet, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -15,12 +15,15 @@ import {
   deleteAsset,
   listAssetPortfolio,
   searchStocks,
+  updateBondAsset,
+  updateDepositAsset,
+  updateStockAsset,
   upsertStockAsset,
   type BondAssetInput,
   type DepositAssetInput,
   type StockAssetInput,
 } from "../../services/assetRepository";
-import type { AssetPortfolio, FinancialInputs, PortfolioModel, Stock } from "../../types/domain";
+import type { AssetPortfolio, BondAsset, DepositAsset, FinancialInputs, PortfolioModel, Stock, StockAsset } from "../../types/domain";
 
 type AssetsViewProps = {
   inputs: FinancialInputs;
@@ -31,6 +34,10 @@ type AssetsViewProps = {
 };
 
 type AssetType = "stock" | "deposit" | "bond";
+type EditingAsset = {
+  type: AssetType;
+  id: string;
+};
 type AllocationSummary = {
   key: string;
   label: string;
@@ -103,6 +110,7 @@ export function AssetsView({
   const [stockForm, setStockForm] = useState(initialStockForm);
   const [depositForm, setDepositForm] = useState(initialDepositForm);
   const [bondForm, setBondForm] = useState(initialBondForm);
+  const [editingAsset, setEditingAsset] = useState<EditingAsset | null>(null);
 
   const summaries = useMemo(() => summarizeAssetPortfolioByCurrency(portfolio), [portfolio]);
   const assetAllocations = useMemo(() => buildEnteredAssetAllocations(portfolio, model.allocations), [model.allocations, portfolio]);
@@ -110,6 +118,7 @@ export function AssetsView({
 
   useEffect(() => {
     if (!openAssetForm) return;
+    resetForms();
     setFormOpen(true);
     onAssetFormOpened();
   }, [onAssetFormOpened, openAssetForm]);
@@ -157,10 +166,64 @@ export function AssetsView({
   const closeForm = () => {
     setFormOpen(false);
     setError(null);
+    setEditingAsset(null);
   };
 
   const openFormForAssetType = (type: AssetType) => {
+    resetForms();
     setAssetType(type);
+    setError(null);
+    setFormOpen(true);
+  };
+
+  const openStockEditor = (asset: StockAsset) => {
+    resetForms();
+    setAssetType("stock");
+    setEditingAsset({ type: "stock", id: asset.id });
+    setSelectedStock(asset.stock);
+    setStockQuery(asset.stock.name);
+    setStockForm({
+      quantity: String(asset.quantity),
+      averageBuyPrice: String(asset.averageBuyPrice),
+      memo: asset.memo ?? "",
+    });
+    setError(null);
+    setFormOpen(true);
+  };
+
+  const openDepositEditor = (asset: DepositAsset) => {
+    resetForms();
+    setAssetType("deposit");
+    setEditingAsset({ type: "deposit", id: asset.id });
+    setDepositForm({
+      depositType: asset.depositType,
+      assetName: asset.assetName,
+      bankName: asset.bankName ?? "",
+      currentAmount: String(asset.currentAmount),
+      monthlyPayment: asset.monthlyPayment == null ? "" : String(asset.monthlyPayment),
+      interestRate: asset.interestRate == null ? "" : String(asset.interestRate),
+      startDate: asset.startDate ?? "",
+      maturityDate: asset.maturityDate ?? "",
+      memo: asset.memo ?? "",
+    });
+    setError(null);
+    setFormOpen(true);
+  };
+
+  const openBondEditor = (asset: BondAsset) => {
+    resetForms();
+    setAssetType("bond");
+    setEditingAsset({ type: "bond", id: asset.id });
+    setBondForm({
+      bondName: asset.bondName,
+      issuer: asset.issuer ?? "",
+      principalAmount: String(asset.principalAmount),
+      currentValue: String(asset.currentValue),
+      couponRate: asset.couponRate == null ? "" : String(asset.couponRate),
+      purchaseDate: asset.purchaseDate ?? "",
+      maturityDate: asset.maturityDate ?? "",
+      memo: asset.memo ?? "",
+    });
     setError(null);
     setFormOpen(true);
   };
@@ -184,9 +247,12 @@ export function AssetsView({
     }
 
     await submitAsset(async () => {
-      await upsertStockAsset(input);
-      setSelectedStock(null);
-      setStockForm(initialStockForm);
+      if (editingAsset?.type === "stock") {
+        await updateStockAsset(editingAsset.id, input);
+      } else {
+        await upsertStockAsset(input);
+      }
+      resetForms();
     });
   };
 
@@ -209,8 +275,12 @@ export function AssetsView({
     }
 
     await submitAsset(async () => {
-      await createDepositAsset(input);
-      setDepositForm(initialDepositForm);
+      if (editingAsset?.type === "deposit") {
+        await updateDepositAsset(editingAsset.id, input);
+      } else {
+        await createDepositAsset(input);
+      }
+      resetForms();
     });
   };
 
@@ -232,8 +302,12 @@ export function AssetsView({
     }
 
     await submitAsset(async () => {
-      await createBondAsset(input);
-      setBondForm(initialBondForm);
+      if (editingAsset?.type === "bond") {
+        await updateBondAsset(editingAsset.id, input);
+      } else {
+        await createBondAsset(input);
+      }
+      resetForms();
     });
   };
 
@@ -260,6 +334,16 @@ export function AssetsView({
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "자산 삭제에 실패했습니다.");
     }
+  };
+
+  const resetForms = () => {
+    setSelectedStock(null);
+    setStockQuery("");
+    setStockResults([]);
+    setStockForm(initialStockForm);
+    setDepositForm(initialDepositForm);
+    setBondForm(initialBondForm);
+    setEditingAsset(null);
   };
 
   return (
@@ -296,13 +380,22 @@ export function AssetsView({
       {error ? <p className="mb-4 rounded-xl border border-rose-800 bg-rose-950 p-3 text-xs font-semibold text-rose-300">{error}</p> : null}
       {loading ? <p className="mb-4 text-center text-xs text-slate-400">보유자산을 불러오는 중입니다.</p> : null}
 
-      <AssetSections portfolio={portfolio} onAdd={openFormForAssetType} onRemove={removeAsset} />
+      <AssetSections
+        portfolio={portfolio}
+        onAdd={openFormForAssetType}
+        onEditStock={openStockEditor}
+        onEditDeposit={openDepositEditor}
+        onEditBond={openBondEditor}
+        onRemove={removeAsset}
+      />
 
       {formOpen ? (
         <div className="absolute inset-0 z-50 flex items-end bg-slate-900/70 p-4 backdrop-blur-sm" onClick={closeForm}>
           <div className="max-h-[86vh] w-full overflow-y-auto rounded-2xl bg-slate-950 p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-100">{assetTypeLabels[assetType]} 추가</h3>
+              <h3 className="text-base font-black text-slate-100">
+                {assetTypeLabels[assetType]} {editingAsset ? "수정" : "추가"}
+              </h3>
               <button
                 type="button"
                 aria-label="자산 입력 닫기"
@@ -366,7 +459,7 @@ export function AssetsView({
                 />
                 <TextInput label="메모" value={stockForm.memo} onChange={(value) => setStockForm((current) => ({ ...current, memo: value }))} />
                 <Button className="w-full" variant="secondary" onClick={submitStockAsset} disabled={submitting}>
-                  {submitting ? "저장 중..." : "주식/ETF 저장"}
+                  {submitting ? "저장 중..." : editingAsset ? "주식/ETF 수정" : "주식/ETF 저장"}
                 </Button>
               </div>
             ) : null}
@@ -404,7 +497,7 @@ export function AssetsView({
                 <DateInput label="만기일" value={depositForm.maturityDate} onChange={(value) => setDepositForm((current) => ({ ...current, maturityDate: value }))} />
                 <TextInput label="메모" value={depositForm.memo} onChange={(value) => setDepositForm((current) => ({ ...current, memo: value }))} />
                 <Button className="w-full" variant="secondary" onClick={submitDepositAsset} disabled={submitting}>
-                  {submitting ? "저장 중..." : "예금/적금 저장"}
+                  {submitting ? "저장 중..." : editingAsset ? "예금/적금 수정" : "예금/적금 저장"}
                 </Button>
               </div>
             ) : null}
@@ -419,7 +512,7 @@ export function AssetsView({
                 <DateInput label="만기일" value={bondForm.maturityDate} onChange={(value) => setBondForm((current) => ({ ...current, maturityDate: value }))} />
                 <TextInput label="메모" value={bondForm.memo} onChange={(value) => setBondForm((current) => ({ ...current, memo: value }))} />
                 <Button className="w-full" variant="secondary" onClick={submitBondAsset} disabled={submitting}>
-                  {submitting ? "저장 중..." : "채권 저장"}
+                  {submitting ? "저장 중..." : editingAsset ? "채권 수정" : "채권 저장"}
                 </Button>
               </div>
             ) : null}
@@ -433,10 +526,16 @@ export function AssetsView({
 function AssetSections({
   portfolio,
   onAdd,
+  onEditStock,
+  onEditDeposit,
+  onEditBond,
   onRemove,
 }: {
   portfolio: AssetPortfolio;
   onAdd: (type: AssetType) => void;
+  onEditStock: (asset: StockAsset) => void;
+  onEditDeposit: (asset: DepositAsset) => void;
+  onEditBond: (asset: BondAsset) => void;
   onRemove: (type: AssetType, id: string) => void;
 }) {
   return (
@@ -457,6 +556,7 @@ function AssetSections({
                 }`}
                 tone={metrics.profitLoss == null ? "neutral" : metrics.profitLoss >= 0 ? "gain" : "loss"}
                 badge={metrics.returnPercent == null ? undefined : formatPercent(metrics.returnPercent)}
+                onEdit={() => onEditStock(asset)}
                 onRemove={() => onRemove("stock", asset.id)}
               />
             );
@@ -475,6 +575,7 @@ function AssetSections({
               subtitle={`${asset.depositType === "deposit" ? "예금" : "적금"} · ${asset.bankName ?? "은행 미입력"}`}
               value={formatWon(asset.currentAmount)}
               detail={asset.interestRate == null ? "이자율 미입력" : `연 ${asset.interestRate}%`}
+              onEdit={() => onEditDeposit(asset)}
               onRemove={() => onRemove("deposit", asset.id)}
             />
           ))}
@@ -496,6 +597,7 @@ function AssetSections({
                 detail={`원금 ${formatWon(asset.principalAmount)}`}
                 tone={metrics.profitLoss >= 0 ? "gain" : "loss"}
                 badge={formatPercent(metrics.returnPercent)}
+                onEdit={() => onEditBond(asset)}
                 onRemove={() => onRemove("bond", asset.id)}
               />
             );
@@ -552,11 +654,11 @@ function AllocationStack({
               />
             ))}
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
             {allocations.map((allocation) => (
-              <div key={allocation.key} className="flex items-center gap-2 text-[11px] font-bold text-slate-200">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: allocation.color }} />
-                <span className="min-w-0 flex-1 truncate">{allocation.label}</span>
+              <div key={allocation.key} className="flex min-w-0 items-center gap-2 text-[11px] font-bold text-slate-200">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: allocation.color }} />
+                <span className="min-w-0 flex-1 leading-snug">{allocation.label}</span>
                 <span className="shrink-0 text-slate-100">{allocation.weight}%</span>
               </div>
             ))}
@@ -576,6 +678,7 @@ function AssetRow({
   detail,
   badge,
   tone = "neutral",
+  onEdit,
   onRemove,
 }: {
   title: string;
@@ -584,6 +687,7 @@ function AssetRow({
   detail: string;
   badge?: string;
   tone?: "neutral" | "gain" | "loss";
+  onEdit: () => void;
   onRemove: () => void;
 }) {
   const toneClass =
@@ -596,14 +700,24 @@ function AssetRow({
           <p className="truncate text-sm font-extrabold text-slate-100">{title}</p>
           <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{subtitle}</p>
         </div>
-        <button
-          type="button"
-          aria-label={`${title} 삭제`}
-          className="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-rose-400"
-          onClick={onRemove}
-        >
-          <Trash2 size={15} />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            aria-label={`${title} 수정`}
+            className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-blue-300"
+            onClick={onEdit}
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            type="button"
+            aria-label={`${title} 삭제`}
+            className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-rose-400"
+            onClick={onRemove}
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs font-black text-slate-100">{value}</p>

@@ -68,7 +68,7 @@ export function ProfileView({ model, userEmail, onResetGoal, onSignOut }: Profil
         >
           <span className="flex items-center gap-2.5 text-xs font-bold text-slate-200">
             <Target size={16} className="text-slate-400" />
-            재무 설계 파라미터 재설정
+            재무목표 / 자산현황 다시 수정하기
           </span>
           <ChevronRight size={14} className="text-slate-400" />
         </button>

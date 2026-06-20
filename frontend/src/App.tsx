@@ -8,7 +8,7 @@ import { OnboardingForm } from "./features/onboarding/OnboardingForm";
 import { PortfolioDashboard } from "./features/portfolio/PortfolioDashboard";
 import { ProfileView } from "./features/profile/ProfileView";
 import { emptyAssetPortfolio, summarizeAssetPortfolioByCurrency } from "./lib/assetCalculations";
-import { getPortfolioModel, defaultFinancialInputs } from "./lib/finance";
+import { applyGoalAwarePortfolioModel, getPortfolioModel, defaultFinancialInputs } from "./lib/finance";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import { requestPortfolioRecommendation } from "./services/moneyPilotApi";
 import type { AppTab, AssetPortfolio, FinancialInputs, PortfolioModel } from "./types/domain";
@@ -36,7 +36,10 @@ function App() {
   );
   const fallbackModel = useMemo(() => getPortfolioModel(inputsWithAssetTotal), [inputsWithAssetTotal]);
   const [recommendedModel, setRecommendedModel] = useState<PortfolioModel | null>(null);
-  const model = recommendedModel ?? fallbackModel;
+  const model = useMemo(
+    () => (recommendedModel ? applyGoalAwarePortfolioModel(recommendedModel, inputsWithAssetTotal) : fallbackModel),
+    [fallbackModel, inputsWithAssetTotal, recommendedModel],
+  );
 
   useEffect(() => {
     if (!supabase) {
@@ -180,8 +183,8 @@ function LoadingView() {
       <div className="mb-4 h-14 w-14 animate-spin rounded-full border-4 border-slate-700 border-t-blue-500" />
       <h2 className="mb-1 text-lg font-extrabold text-slate-100">정량적 포트폴리오 최적화 중...</h2>
       <div className="space-y-1 px-8 text-center text-xs text-slate-400">
-        <p>소득 대비 목표 달성 가능성을 계산 중...</p>
-        <p className="text-[11px] font-bold text-blue-400">MPT 기반 자산 배분 후보 탐색 중...</p>
+        <p>목표 달성 최소 월 투자금을 계산 중...</p>
+        <p className="text-[11px] font-bold text-blue-400">월 투자 여력과 투자성향을 함께 확인 중...</p>
       </div>
     </div>
   );

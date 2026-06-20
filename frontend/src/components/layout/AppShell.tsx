@@ -22,7 +22,7 @@ export function AppShell({ children, activeTab, userEmail, onTabChange }: AppShe
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-3 py-4 sm:py-8">
-      <div className="relative flex h-[880px] w-full max-w-md flex-col overflow-hidden rounded-3xl border-[10px] border-slate-800 bg-slate-950 shadow-2xl">
+      <div className="relative flex h-[880px] max-h-[calc(100vh-2rem)] w-full max-w-[390px] flex-col overflow-hidden rounded-3xl border-[10px] border-slate-800 bg-slate-950 shadow-2xl">
         <div className="absolute inset-x-0 top-0 z-50 flex h-6 items-center justify-between bg-slate-900 px-6 text-[10px] text-slate-300">
           <span>{time}</span>
           <div className="absolute left-1/2 top-0 flex h-4 w-24 -translate-x-1/2 items-center justify-center rounded-b-xl bg-slate-900">

@@ -1,4 +1,4 @@
-import type { PortfolioAllocation, PortfolioModel } from "../types/domain";
+import type { FinancialInputs, PortfolioAllocation, PortfolioModel } from "../types/domain";
 
 const rawPortfolioModels: Record<PortfolioModel["riskProfile"], PortfolioModel> = {
   aggressive: {
@@ -338,3 +338,153 @@ export const portfolioModels: Record<PortfolioModel["riskProfile"], PortfolioMod
   neutral: normalizePortfolioModel(rawPortfolioModels.neutral),
   stable: normalizePortfolioModel(rawPortfolioModels.stable),
 };
+
+export function buildGoalAwarePortfolioModel(model: PortfolioModel, inputs: FinancialInputs): PortfolioModel {
+  const target = getGoalAwareTarget(model.riskProfile, inputs);
+
+  return {
+    ...model,
+    expectedReturnPercent: getWeightedExpectedReturn(target.weights),
+    allocations: groupAllocations(model.allocations, target.weights),
+    xaiSummary: target.summary,
+    rationaleFactors: target.factors,
+  };
+}
+
+function getGoalAwareTarget(riskProfile: PortfolioModel["riskProfile"], inputs: FinancialInputs) {
+  const base = portfolioTargets[riskProfile].weights;
+  const months = Math.max(1, inputs.goalYears * 12);
+  const remainingManwon = Math.max(0, inputs.goalAmountManwon - inputs.currentAssetsManwon);
+  const requiredMonthlyInvestmentManwon = Math.ceil(remainingManwon / months);
+  const monthlyInvestableManwon = Math.max(0, inputs.monthlySalaryManwon - inputs.monthlySpendManwon);
+  const coverageRatio =
+    requiredMonthlyInvestmentManwon > 0 ? monthlyInvestableManwon / requiredMonthlyInvestmentManwon : Infinity;
+  const horizon = inputs.goalYears <= 3 ? "short" : inputs.goalYears <= 7 ? "mid" : "long";
+  const feasibility =
+    requiredMonthlyInvestmentManwon === 0
+      ? "achieved"
+      : coverageRatio >= 1.2
+        ? "comfortable"
+        : coverageRatio >= 1
+          ? "on-track"
+          : coverageRatio >= 0.6
+            ? "tight"
+            : "stretched";
+
+  let stockWeight = base["stock-etf"];
+
+  if (horizon === "short") {
+    const shortStockCap = riskProfile === "aggressive" ? 60 : riskProfile === "neutral" ? 45 : 20;
+    stockWeight = Math.min(stockWeight, shortStockCap);
+  }
+
+  if (horizon === "long" && (feasibility === "comfortable" || feasibility === "on-track")) {
+    stockWeight += riskProfile === "stable" ? 5 : 10;
+  }
+
+  if (feasibility === "tight") {
+    stockWeight -= horizon === "short" ? 10 : 5;
+  }
+
+  if (feasibility === "stretched") {
+    stockWeight -= horizon === "short" ? 15 : 10;
+  }
+
+  stockWeight = clamp(stockWeight, getStockFloor(riskProfile), getStockCeiling(riskProfile, horizon));
+
+  const defensiveWeight = 100 - stockWeight;
+  const baseDefensiveWeight = base["deposit-savings"] + base.bond;
+  const depositShare = baseDefensiveWeight > 0 ? base["deposit-savings"] / baseDefensiveWeight : 0.5;
+  let depositWeight = Math.round(defensiveWeight * depositShare);
+
+  if (horizon === "short") depositWeight = Math.max(depositWeight, 20);
+  if (feasibility === "stretched") depositWeight = Math.max(depositWeight, 25);
+
+  depositWeight = clamp(depositWeight, 10, defensiveWeight - 10);
+  const weights = normalizeWeights({
+    "stock-etf": stockWeight,
+    "deposit-savings": depositWeight,
+    bond: 100 - stockWeight - depositWeight,
+  });
+
+  return {
+    weights,
+    summary: buildGoalAwareSummary(feasibility, horizon, riskProfile, weights),
+    factors: buildGoalAwareFactors(feasibility, horizon, coverageRatio, requiredMonthlyInvestmentManwon),
+  };
+}
+
+function getStockFloor(riskProfile: PortfolioModel["riskProfile"]) {
+  if (riskProfile === "stable") return 5;
+  if (riskProfile === "neutral") return 25;
+  return 40;
+}
+
+function getStockCeiling(riskProfile: PortfolioModel["riskProfile"], horizon: "short" | "mid" | "long") {
+  if (riskProfile === "stable") return horizon === "short" ? 20 : 30;
+  if (riskProfile === "neutral") return horizon === "short" ? 45 : 65;
+  return horizon === "short" ? 60 : 80;
+}
+
+function normalizeWeights(weights: Record<AllocationGroupKey, number>) {
+  const total = weights["stock-etf"] + weights["deposit-savings"] + weights.bond;
+  if (total === 100) return weights;
+
+  return {
+    ...weights,
+    bond: weights.bond + (100 - total),
+  };
+}
+
+function getWeightedExpectedReturn(weights: Record<AllocationGroupKey, number>) {
+  return Math.round((weights["stock-etf"] * 0.075 + weights["deposit-savings"] * 0.032 + weights.bond * 0.045) * 10) / 10;
+}
+
+function buildGoalAwareSummary(
+  feasibility: string,
+  horizon: "short" | "mid" | "long",
+  riskProfile: PortfolioModel["riskProfile"],
+  weights: Record<AllocationGroupKey, number>,
+) {
+  const horizonText = horizon === "short" ? "목표 기간이 짧아" : horizon === "mid" ? "목표 기간이 중간 정도라" : "목표 기간이 길어";
+  const feasibilityText =
+    feasibility === "comfortable"
+      ? "월 투자 여력이 충분한 편입니다"
+      : feasibility === "on-track"
+        ? "월 투자 여력이 목표 달성 최소 월 투자금과 비슷합니다"
+        : feasibility === "tight"
+          ? "목표 달성 여력이 다소 빠듯합니다"
+          : feasibility === "stretched"
+            ? "현재 조건만으로는 목표 달성 여력이 부족합니다"
+            : "현재 자산이 목표 금액에 도달했거나 거의 도달했습니다";
+  const riskText = riskProfile === "aggressive" ? "공격형 성향" : riskProfile === "neutral" ? "중립형 성향" : "안정형 성향";
+
+  return `${feasibilityText}. ${horizonText} ${riskText}을 그대로 적용하지 않고 주식/ETF ${weights["stock-etf"]}%, 예금/적금 ${weights["deposit-savings"]}%, 채권 ${weights.bond}%로 보정했습니다.`;
+}
+
+function buildGoalAwareFactors(
+  feasibility: string,
+  horizon: "short" | "mid" | "long",
+  coverageRatio: number,
+  requiredMonthlyInvestmentManwon: number,
+) {
+  const coverageText = Number.isFinite(coverageRatio) ? `${Math.round(coverageRatio * 100)}%` : "충족";
+  const factors = [
+    `목표 달성 최소 월 투자금 ${requiredMonthlyInvestmentManwon.toLocaleString("ko-KR")}만원 기준 달성 여력 비율 ${coverageText}`,
+    horizon === "short"
+      ? "단기 목표라 손실 회복 시간을 고려해 주식/ETF 비중 상한 적용"
+      : horizon === "mid"
+        ? "중기 목표라 투자성향 기본 비중을 중심으로 제한적 보정"
+        : "장기 목표라 투자성향에 따라 성장 자산 비중을 일부 확대 가능",
+  ];
+
+  if (feasibility === "tight" || feasibility === "stretched") {
+    factors.push("목표가 빠듯할수록 위험자산 확대보다 월 투자 여력, 목표 금액, 목표 기간 조정 검토");
+  }
+
+  return factors;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}

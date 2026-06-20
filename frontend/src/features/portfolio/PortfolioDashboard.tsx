@@ -1,7 +1,5 @@
 import {
   X,
-  GraduationCap,
-  Lightbulb,
   Network,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -37,14 +35,29 @@ type RebalanceDeviation = {
   diff: number;
 };
 
+type GoalFeasibilityStatus = "achieved" | "comfortable" | "on-track" | "tight" | "stretched";
+
+type GoalFeasibility = {
+  months: number;
+  monthlyInvestableManwon: number;
+  requiredMonthlyInvestmentManwon: number;
+  coverageRatio: number;
+  status: GoalFeasibilityStatus;
+  statusLabel: string;
+  horizonLabel: string;
+};
+
 const REBALANCE_SUPPRESS_UNTIL_KEY = "moneyPilotRebalanceSuppressUntil";
 
 export function PortfolioDashboard({ inputs, model, assetPortfolio, onRebalanceNow, onReset }: PortfolioDashboardProps) {
-  const [showMptInfo, setShowMptInfo] = useState(false);
   const [rebalanceDismissed, setRebalanceDismissed] = useState(false);
   const [rebalanceSuppressUntil, setRebalanceSuppressUntil] = useState(() => getStoredRebalanceSuppressUntil());
   const simulation = useMemo(() => computeSimulationStats(inputs, model), [inputs, model]);
-  const xaiExplanation = useMemo(() => getPortfolioXaiExplanation(model.riskProfile), [model.riskProfile]);
+  const feasibility = useMemo(() => getGoalFeasibility(inputs), [inputs]);
+  const decisionExplanation = useMemo(
+    () => getPortfolioDecisionExplanation(inputs, model, feasibility),
+    [feasibility, inputs, model],
+  );
   const assetAllocations = useMemo(
     () => buildEnteredAssetAllocations(assetPortfolio, model.allocations),
     [assetPortfolio, model.allocations],
@@ -86,13 +99,6 @@ export function PortfolioDashboard({ inputs, model, assetPortfolio, onRebalanceN
             <Network size={15} className="text-blue-400" />
             포트폴리오 구성 비중
           </h3>
-          <button
-            type="button"
-            className="rounded-lg bg-slate-800 px-2 py-1 text-[9px] font-extrabold text-slate-100 transition hover:bg-slate-700"
-            onClick={() => setShowMptInfo((current) => !current)}
-          >
-            포트폴리오 추천 기준이 궁금하다면?
-          </button>
         </div>
 
         <div className="mb-6 rounded-[28px] border border-slate-700 bg-slate-900 p-5 shadow-sm">
@@ -101,16 +107,32 @@ export function PortfolioDashboard({ inputs, model, assetPortfolio, onRebalanceN
         </div>
 
         <div className="mb-6 rounded-xl border border-blue-800 bg-blue-950/40 p-4">
-          <p className="mb-1 text-[10px] font-extrabold text-blue-300">설명 가능한 AI 추천 근거</p>
-          <h4 className="mb-2 text-sm font-black text-slate-100">{xaiExplanation.title}</h4>
-          <p className="mb-3 text-[11px] leading-relaxed text-slate-300">{xaiExplanation.summary}</p>
+          <p className="mb-1 text-[10px] font-extrabold text-blue-300">추천은 이렇게 계산했어요</p>
+          <h4 className="mb-2 text-sm font-black text-slate-100">{decisionExplanation.title}</h4>
+          <p className="mb-3 text-[11px] leading-relaxed text-slate-300">{decisionExplanation.summary}</p>
+
+          <div className="mb-3 grid grid-cols-3 gap-2">
+            <MetricTile label="월 투자 여력" value={`${formatManwon(feasibility.monthlyInvestableManwon)}만원`} />
+            <MetricTile label="목표 달성 최소 월 투자금" value={`${formatManwon(feasibility.requiredMonthlyInvestmentManwon)}만원`} />
+            <MetricTile label="달성 여력 비율" value={formatCoverageRatio(feasibility.coverageRatio)} />
+          </div>
+
           <div className="space-y-2">
-            {xaiExplanation.reasons.map((reason) => (
+            {decisionExplanation.reasons.map((reason) => (
               <div key={reason.title} className="rounded-lg bg-slate-900 p-3">
                 <p className="mb-1 text-[11px] font-extrabold text-slate-100">{reason.title}</p>
                 <p className="text-[10px] leading-relaxed text-slate-400">{reason.body}</p>
               </div>
             ))}
+          </div>
+          <div className="mt-4 border-t border-blue-800/70 pt-4">
+            <p className="mb-2 text-[11px] font-extrabold text-blue-200">추천 기준 요약</p>
+            <p className="mb-3 text-[11px] leading-relaxed text-slate-300">{model.xaiSummary}</p>
+            <ul className="space-y-1 rounded-lg border border-slate-700 bg-slate-950 p-3 text-[10px] text-slate-300">
+              {model.rationaleFactors.map((factor) => (
+                <li key={factor}>• {factor}</li>
+              ))}
+            </ul>
           </div>
         </div>
 
@@ -142,45 +164,6 @@ export function PortfolioDashboard({ inputs, model, assetPortfolio, onRebalanceN
         </div>
 
       </Card>
-
-      {showMptInfo ? (
-        <div className="fixed inset-0 z-40 bg-slate-900/20 flex items-end backdrop-blur-[1px]" onClick={() => setShowMptInfo(false)}>
-          <div
-            className="no-scrollbar w-full max-h-[75vh] overflow-y-auto rounded-t-2xl border border-b-0 border-slate-700 bg-slate-900 p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <h4 className="flex items-center gap-2 text-sm font-extrabold text-slate-100">
-                <Lightbulb size={16} className="text-blue-400" />
-                왜 MPT 기반 배분인가요?
-              </h4>
-              <button
-                type="button"
-                aria-label="추천 기준 닫기"
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-                onClick={() => setShowMptInfo(false)}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <p className="mb-4 text-sm leading-relaxed text-slate-300">
-              상관관계가 낮은 자산을 섞어 목표 수익률 대비 변동성을 낮추는 방식입니다. 현재는 목데이터 기반이며, 이후 실제 상품/가격 데이터와 연결합니다.
-            </p>
-            <div className="rounded-xl border border-blue-800 bg-blue-950/70 p-4">
-              <h4 className="mb-2 flex items-center gap-1 text-xs font-extrabold text-blue-200">
-                <GraduationCap size={14} />
-                AI 포트폴리오 추천 엔진 브리핑
-              </h4>
-              <p className="mb-3 text-[11px] leading-relaxed text-slate-300">{model.xaiSummary}</p>
-              <ul className="space-y-1 rounded-lg border border-slate-700 bg-slate-950 p-3 text-[10px] text-slate-300">
-                {model.rationaleFactors.map((factor) => (
-                  <li key={factor}>• {factor}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {shouldShowRebalanceModal ? (
         <RebalanceModal
@@ -243,7 +226,7 @@ function RebalanceModal({
 
         <div className="mb-4 rounded-xl border border-slate-700 bg-slate-900 p-4">
           <p className="mb-3 text-sm font-bold leading-relaxed text-slate-100">
-            {mainDeviation.label} 비중이 목표 {mainDeviation.targetWeight}% 대비 현재 {mainDeviation.actualWeight}%로{" "}
+            {mainDeviation.label} 비중이 현재 {mainDeviation.actualWeight}%로, 목표 {mainDeviation.targetWeight}% 대비{" "}
             {Math.abs(mainDeviation.diff)}%p 이탈했습니다.
           </p>
           {overweight.length > 0 ? (
@@ -259,7 +242,7 @@ function RebalanceModal({
         </div>
 
         <p className="mb-4 text-[11px] leading-relaxed text-slate-400">
-          AI는 현재 비중이 추천 비중에서 ±10%p 이상 벗어난 자산부문을 기준으로 균형 회복을 권유합니다.
+          현재 비중이 추천 비중에서 ±10%p 이상 벗어난 자산부문을 기준으로 균형 회복을 권유합니다.
           실제 매수/매도 후 자산현황에서 변동사항을 업데이트해주세요.
         </p>
 
@@ -305,11 +288,11 @@ function AllocationStack({
               />
             ))}
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
             {allocations.map((allocation) => (
-              <div key={allocation.key} className="flex items-center gap-2 text-[11px] font-bold text-slate-200">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: allocation.color }} />
-                <span className="min-w-0 flex-1 truncate">{allocation.label}</span>
+              <div key={allocation.key} className="flex min-w-0 items-center gap-2 text-[11px] font-bold text-slate-200">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: allocation.color }} />
+                <span className="min-w-0 flex-1 leading-snug">{allocation.label}</span>
                 <span className="shrink-0 text-slate-100">{allocation.weight}%</span>
               </div>
             ))}
@@ -318,6 +301,15 @@ function AllocationStack({
       ) : (
         <p className="rounded-xl bg-slate-800 p-3 text-center text-xs font-semibold text-slate-400">{emptyMessage}</p>
       )}
+    </div>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-blue-900/70 bg-slate-950/70 p-2">
+      <p className="mb-1 text-[9px] font-bold leading-snug text-slate-400">{label}</p>
+      <p className="truncate text-[11px] font-black text-slate-100">{value}</p>
     </div>
   );
 }
@@ -369,68 +361,140 @@ function formatDeviationLabels(deviations: RebalanceDeviation[]) {
 }
 
 function getStoredRebalanceSuppressUntil() {
+  if (import.meta.env.DEV) {
+    return 0;
+  }
+
   const storedValue = localStorage.getItem(REBALANCE_SUPPRESS_UNTIL_KEY);
   const suppressUntil = storedValue ? Number(storedValue) : 0;
 
   return Number.isFinite(suppressUntil) ? suppressUntil : 0;
 }
 
-function getPortfolioXaiExplanation(riskProfile: PortfolioModel["riskProfile"]) {
-  if (riskProfile === "aggressive") {
-    return {
-      title: "공격투자형: 사회초년생의 인적 자본을 반영한 성장 중심 배분",
-      summary:
-        "위험자산 비중을 높인 이유는 현재 금융자산보다 앞으로 벌어들일 근로소득, 즉 인적 자본의 가치가 더 크다고 보기 때문입니다.",
-      reasons: [
-        {
-          title: "보디와 머턴의 생애주기 인적 자본 이론",
-          body:
-            "사회초년생의 안정적인 근로소득은 채권적 자산처럼 작동합니다. 따라서 전체 자산 관점에서는 금융 포트폴리오 안에서 주식형 ETF 비중을 높여 장기 복리 수익률을 추구할 수 있습니다.",
-        },
-        {
-          title: "장기 근로기간이 변동성 완충 장치",
-          body:
-            "단기 급락이 발생해도 남은 근로기간 동안 소득 유입이 이어지므로 저점 분할 매수와 회복 시간을 확보할 수 있습니다.",
-        },
-      ],
-    };
-  }
-
-  if (riskProfile === "neutral") {
-    return {
-      title: "위험중립형: 현대 포트폴리오 이론 기반의 균형 배분",
-      summary:
-        "성장성과 안정성을 함께 고려해 주식, 채권, 현금을 분산 배치한 표준형 모델입니다.",
-      reasons: [
-        {
-          title: "마코위츠의 현대 포트폴리오 이론",
-          body:
-            "상관관계가 다른 자산을 함께 보유하면 같은 기대수익률에서도 변동성을 낮출 수 있습니다. 주식과 채권을 함께 배치해 효율적 투자선에 가까운 균형을 추구합니다.",
-        },
-        {
-          title: "브린슨 연구의 자산배분 중요성 반영",
-          body:
-            "장기 성과의 핵심은 개별 종목 선택보다 자산군 배분에 있다는 연구 결과를 반영해, 특정 종목보다 자산군 비중 관리에 초점을 둡니다.",
-        },
-      ],
-    };
-  }
+function getGoalFeasibility(inputs: FinancialInputs): GoalFeasibility {
+  const months = Math.max(1, inputs.goalYears * 12);
+  const remainingManwon = Math.max(0, inputs.goalAmountManwon - inputs.currentAssetsManwon);
+  const monthlyInvestableManwon = Math.max(0, inputs.monthlySalaryManwon - inputs.monthlySpendManwon);
+  const requiredMonthlyInvestmentManwon = Math.ceil(remainingManwon / months);
+  const coverageRatio =
+    requiredMonthlyInvestmentManwon > 0 ? monthlyInvestableManwon / requiredMonthlyInvestmentManwon : Infinity;
 
   return {
-    title: "안정지향형: 원금 방어와 실질 구매력 보존의 균형",
-    summary:
-      "안전자산 중심으로 손실 가능성을 낮추되, 인플레이션에 따른 구매력 하락을 방어하기 위해 최소한의 성장 자산을 포함합니다.",
+    months,
+    monthlyInvestableManwon,
+    requiredMonthlyInvestmentManwon,
+    coverageRatio,
+    status: getFeasibilityStatus(coverageRatio, requiredMonthlyInvestmentManwon),
+    statusLabel: getFeasibilityStatusLabel(coverageRatio, requiredMonthlyInvestmentManwon),
+    horizonLabel: getHorizonLabel(inputs.goalYears),
+  };
+}
+
+function getFeasibilityStatus(coverageRatio: number, requiredMonthlyInvestmentManwon: number): GoalFeasibilityStatus {
+  if (requiredMonthlyInvestmentManwon === 0) return "achieved";
+  if (coverageRatio >= 1.2) return "comfortable";
+  if (coverageRatio >= 1) return "on-track";
+  if (coverageRatio >= 0.6) return "tight";
+  return "stretched";
+}
+
+function getFeasibilityStatusLabel(coverageRatio: number, requiredMonthlyInvestmentManwon: number) {
+  if (requiredMonthlyInvestmentManwon === 0) return "이미 목표권";
+  if (coverageRatio >= 1.2) return "여유";
+  if (coverageRatio >= 1) return "적정";
+  if (coverageRatio >= 0.6) return "빠듯";
+  return "매우 부족";
+}
+
+function getHorizonLabel(goalYears: number) {
+  if (goalYears <= 3) return "단기 목표";
+  if (goalYears <= 7) return "중기 목표";
+  return "장기 목표";
+}
+
+function getPortfolioDecisionExplanation(
+  inputs: FinancialInputs,
+  model: PortfolioModel,
+  feasibility: GoalFeasibility,
+) {
+  const mainAllocation = model.allocations.reduce((selected, current) =>
+    current.weight > selected.weight ? current : selected,
+  );
+  const riskLabel = getRiskProfileLabel(model.riskProfile);
+  const needText =
+    feasibility.requiredMonthlyInvestmentManwon === 0
+      ? "현재 입력된 자산만으로 목표 금액에 도달한 상태입니다."
+      : `목표를 ${feasibility.months}개월 안에 달성하려면 매달 최소 ${formatManwon(
+          feasibility.requiredMonthlyInvestmentManwon,
+        )}만원이 필요합니다. 현재 월 투자 여력은 ${formatManwon(
+          feasibility.monthlyInvestableManwon,
+        )}만원입니다.`;
+
+  return {
+    title: `${feasibility.statusLabel} 상태의 ${riskLabel} 포트폴리오`,
+    summary: `${needText} 그래서 ${feasibility.horizonLabel}, 달성 여력, 투자성향을 함께 보고 ${mainAllocation.label}을 가장 큰 비중으로 둔 초안을 제시했습니다.`,
     reasons: [
       {
-        title: "어빙 피셔의 실질금리 관점",
-        body:
-          "예적금만 보유하면 명목 원금은 지켜도 물가 상승으로 실제 구매력이 줄어들 수 있습니다. 따라서 국채와 예금 중심으로 안정성을 확보하면서 일부 주식형 자산을 편입합니다.",
+        title: "목표 달성 최소 월 투자금",
+        body: getRequiredInvestmentReason(feasibility),
       },
       {
-        title: "극단적 변동성 회피를 위한 방어적 구조",
-        body:
-          "대부분의 비중은 국채와 확정금리형 자산에 두고, 제한적인 성장 자산만 배치해 손실 가능성과 물가상승 위험을 동시에 관리합니다.",
+        title: "목표 기간",
+        body: getHorizonReason(feasibility),
+      },
+      {
+        title: "투자성향",
+        body: `${riskLabel} 성향을 기본 출발점으로 사용했습니다. 다만 목표가 빠듯할수록 단순히 위험자산을 더 늘리는 방식보다 월 투자 여력 확대, 목표 금액 조정, 목표 기간 연장을 함께 검토하는 것이 더 현실적입니다.`,
       },
     ],
   };
+}
+
+function getRequiredInvestmentReason(feasibility: GoalFeasibility) {
+  if (feasibility.status === "achieved") {
+    return "현재 자산이 목표 금액 이상이므로 신규 투자보다 자산 보전과 목표 시점까지의 변동성 관리가 더 중요합니다.";
+  }
+
+  if (feasibility.status === "comfortable") {
+    return `월 투자 여력이 목표 달성 최소 월 투자금의 ${formatCoverageRatio(
+      feasibility.coverageRatio,
+    )} 수준입니다. 목표 달성 여유가 있는 편이므로 무리하게 위험을 키우기보다 꾸준한 납입과 비중 관리가 중요합니다.`;
+  }
+
+  if (feasibility.status === "on-track") {
+    return `월 투자 여력이 목표 달성 최소 월 투자금과 비슷한 수준입니다. 현재 납입 리듬을 유지하는지가 목표 달성 가능성에 큰 영향을 줍니다.`;
+  }
+
+  if (feasibility.status === "tight") {
+    return `월 투자 여력이 목표 달성 최소 월 투자금의 ${formatCoverageRatio(
+      feasibility.coverageRatio,
+    )} 수준이라 다소 빠듯합니다. 투자수익률만으로 부족분을 해결하기보다 저축 여력 확대도 함께 검토해야 합니다.`;
+  }
+
+  return `월 투자 여력이 목표 달성 최소 월 투자금의 ${formatCoverageRatio(
+    feasibility.coverageRatio,
+  )} 수준입니다. 현재 조건에서는 목표 금액이나 기간을 조정하지 않으면 달성 가능성이 낮을 수 있습니다.`;
+}
+
+function getHorizonReason(feasibility: GoalFeasibility) {
+  if (feasibility.horizonLabel === "단기 목표") {
+    return "목표 기간이 짧은 편이라 큰 손실이 발생했을 때 회복할 시간이 제한적입니다. 그래서 성장 자산만으로 구성하기보다 예금/적금과 채권 비중도 함께 확인해야 합니다.";
+  }
+
+  if (feasibility.horizonLabel === "중기 목표") {
+    return "목표 기간이 중간 정도라 성장성과 안정성을 함께 봐야 합니다. 투자성향에 따른 기본 비중을 유지하되 목표 달성 압박이 큰지 함께 판단합니다.";
+  }
+
+  return "목표 기간이 긴 편이라 단기 변동성을 견딜 시간이 상대적으로 있습니다. 월 투자 여력이 충분하다면 장기 성장 자산을 꾸준히 가져가는 전략을 검토할 수 있습니다.";
+}
+
+function getRiskProfileLabel(riskProfile: PortfolioModel["riskProfile"]) {
+  if (riskProfile === "aggressive") return "공격형";
+  if (riskProfile === "neutral") return "중립형";
+  return "안정형";
+}
+
+function formatCoverageRatio(coverageRatio: number) {
+  if (!Number.isFinite(coverageRatio)) return "충족";
+  return `${Math.round(coverageRatio * 100)}%`;
 }

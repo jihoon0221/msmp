@@ -177,6 +177,25 @@ export async function upsertStockAsset(input: StockAssetInput) {
   await refreshStockPrices([input.stockId]);
 }
 
+export async function updateStockAsset(id: string, input: StockAssetInput) {
+  const client = requireSupabaseClient();
+  await requireUserId();
+
+  const { error } = await client
+    .from("user_stock_assets")
+    .update({
+      stock_id: input.stockId,
+      quantity: input.quantity,
+      average_buy_price: input.averageBuyPrice,
+      memo: emptyToNull(input.memo),
+    })
+    .eq("id", id);
+
+  if (error) throw error;
+
+  await refreshStockPrices([input.stockId]);
+}
+
 export async function createDepositAsset(input: DepositAssetInput) {
   const client = requireSupabaseClient();
   const userId = await requireUserId();
@@ -197,6 +216,28 @@ export async function createDepositAsset(input: DepositAssetInput) {
   if (error) throw error;
 }
 
+export async function updateDepositAsset(id: string, input: DepositAssetInput) {
+  const client = requireSupabaseClient();
+  await requireUserId();
+
+  const { error } = await client
+    .from("user_deposit_assets")
+    .update({
+      deposit_type: input.depositType,
+      asset_name: input.assetName,
+      bank_name: emptyToNull(input.bankName),
+      current_amount: input.currentAmount,
+      monthly_payment: input.depositType === "installment_savings" ? input.monthlyPayment ?? null : null,
+      interest_rate: input.interestRate ?? null,
+      start_date: emptyToNull(input.startDate),
+      maturity_date: emptyToNull(input.maturityDate),
+      memo: emptyToNull(input.memo),
+    })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
 export async function createBondAsset(input: BondAssetInput) {
   const client = requireSupabaseClient();
   const userId = await requireUserId();
@@ -212,6 +253,27 @@ export async function createBondAsset(input: BondAssetInput) {
     maturity_date: emptyToNull(input.maturityDate),
     memo: emptyToNull(input.memo),
   });
+
+  if (error) throw error;
+}
+
+export async function updateBondAsset(id: string, input: BondAssetInput) {
+  const client = requireSupabaseClient();
+  await requireUserId();
+
+  const { error } = await client
+    .from("user_bond_assets")
+    .update({
+      bond_name: input.bondName,
+      issuer: emptyToNull(input.issuer),
+      principal_amount: input.principalAmount,
+      current_value: input.currentValue,
+      coupon_rate: input.couponRate ?? null,
+      purchase_date: emptyToNull(input.purchaseDate),
+      maturity_date: emptyToNull(input.maturityDate),
+      memo: emptyToNull(input.memo),
+    })
+    .eq("id", id);
 
   if (error) throw error;
 }

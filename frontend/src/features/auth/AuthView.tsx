@@ -101,40 +101,20 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-8">
-      <div className="w-full max-w-md">
-        <div className="mb-5">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
-            <ShieldCheck size={24} />
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-3 py-4 sm:py-8">
+      <div className="relative flex h-[880px] max-h-[calc(100vh-2rem)] w-full max-w-[390px] flex-col overflow-hidden rounded-3xl border-[10px] border-slate-800 bg-slate-950 shadow-2xl">
+        <div className="no-scrollbar flex-1 overflow-y-auto px-5 py-8">
+          <div className="mb-5">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
+              <ShieldCheck size={24} />
+            </div>
+            <h1 className="text-2xl font-black text-slate-100">Money Pilot</h1>
+            <p className="mt-1 text-sm leading-relaxed text-slate-400">
+              보유자산 저장과 가격 갱신을 위해 Supabase 계정으로 로그인합니다.
+            </p>
           </div>
-          <h1 className="text-2xl font-black text-slate-100">Money Pilot</h1>
-          <p className="mt-1 text-sm leading-relaxed text-slate-400">
-            보유자산 저장과 가격 갱신을 위해 Supabase 계정으로 로그인합니다.
-          </p>
-        </div>
 
         <Card>
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              className={`rounded-xl px-3 py-2 text-xs font-extrabold ${
-                mode === "sign-in" ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300"
-              }`}
-              onClick={() => setMode("sign-in")}
-            >
-              로그인
-            </button>
-            <button
-              type="button"
-              className={`rounded-xl px-3 py-2 text-xs font-extrabold ${
-                mode === "sign-up" ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300"
-              }`}
-              onClick={() => setMode("sign-up")}
-            >
-              회원가입
-            </button>
-          </div>
-
           <form className="space-y-3" onSubmit={submit}>
             <label className="block">
               <span className="mb-1 block text-[11px] font-semibold text-slate-400">이메일</span>
@@ -182,11 +162,22 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
               {submitting ? "처리 중..." : isSignUp ? "회원가입" : "로그인"}
             </Button>
           </form>
+
+          <div className="mt-4 border-t border-slate-700 pt-4 text-center">
+            <button
+              type="button"
+              className="text-xs font-bold text-blue-300 underline-offset-4 hover:text-blue-200 hover:underline"
+              onClick={() => setMode(isSignUp ? "sign-in" : "sign-up")}
+            >
+              {isSignUp ? "이미 계정이 있으신가요? 로그인" : "계정이 없으신가요? 회원가입"}
+            </button>
+          </div>
         </Card>
 
-        <p className="mt-4 text-center text-[10px] leading-relaxed text-slate-400">
-          Supabase Auth 이메일/비밀번호 인증을 사용합니다. 자산 데이터는 로그인한 사용자 본인 row만 접근합니다.
-        </p>
+          <p className="mt-4 text-center text-[10px] leading-relaxed text-slate-400">
+            Supabase Auth 이메일/비밀번호 인증을 사용합니다. 자산 데이터는 로그인한 사용자 본인 row만 접근합니다.
+          </p>
+        </div>
       </div>
     </main>
   );

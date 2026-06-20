@@ -92,22 +92,20 @@ export function OnboardingForm({
           <div className="flex gap-3">
             <label className="flex-1">
               <span className="mb-1 block text-[11px] font-semibold text-slate-400">목표액 (만원)</span>
-              <input
-                type="number"
+              <NumericInput
                 min={0}
                 value={inputs.goalAmountManwon}
-                onChange={(event) => update("goalAmountManwon", Number(event.target.value))}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs font-semibold text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(value) => update("goalAmountManwon", value)}
+                className="py-2.5 font-semibold"
               />
             </label>
             <label className="flex-1">
               <span className="mb-1 block text-[11px] font-semibold text-slate-400">희망 기한 (년)</span>
-              <input
-                type="number"
+              <NumericInput
                 min={1}
                 value={inputs.goalYears}
-                onChange={(event) => update("goalYears", Number(event.target.value))}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs font-semibold text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(value) => update("goalYears", value)}
+                className="py-2.5 font-semibold"
               />
             </label>
           </div>
@@ -144,27 +142,25 @@ export function OnboardingForm({
           <div className="grid grid-cols-2 gap-3">
             <label>
               <span className="mb-1 block text-[11px] font-semibold text-slate-400">월 실수령액 (만원)</span>
-              <input
-                type="number"
+              <NumericInput
                 min={0}
                 value={inputs.monthlySalaryManwon}
-                onChange={(event) => update("monthlySalaryManwon", Number(event.target.value))}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(value) => update("monthlySalaryManwon", value)}
+                className="py-2"
               />
             </label>
             <label>
               <span className="mb-1 block text-[11px] font-semibold text-slate-400">월 소비 (만원)</span>
-              <input
-                type="number"
+              <NumericInput
                 min={0}
                 value={inputs.monthlySpendManwon}
-                onChange={(event) => update("monthlySpendManwon", Number(event.target.value))}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(value) => update("monthlySpendManwon", value)}
+                className="py-2"
               />
             </label>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-slate-800 p-2.5 text-xs">
-            <span className="font-bold text-slate-100">월 운용 가능 금액</span>
+            <span className="font-bold text-slate-100">월 투자 여력</span>
             <span className="text-sm font-black text-blue-300">{formatManwon(monthlyInvestable)} 만원</span>
           </div>
         </div>
@@ -208,5 +204,33 @@ export function OnboardingForm({
         <BarChart3 size={18} />
       </Button>
     </main>
+  );
+}
+
+function NumericInput({
+  value,
+  min,
+  className,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  className?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <input
+      type="number"
+      min={min}
+      value={value === 0 ? "" : value}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        onChange(nextValue === "" ? 0 : Number(nextValue));
+      }}
+      onBlur={() => {
+        if (value < min) onChange(min);
+      }}
+      className={`w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${className ?? ""}`}
+    />
   );
 }

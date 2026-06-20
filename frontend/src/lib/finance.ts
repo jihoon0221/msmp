@@ -1,5 +1,5 @@
 import { getGoalLabel } from "../constants/goals";
-import { portfolioModels } from "../constants/portfolioModels";
+import { buildGoalAwarePortfolioModel, portfolioModels } from "../constants/portfolioModels";
 import type { FinancialInputs, PortfolioModel, SimulationStats } from "../types/domain";
 
 export const defaultFinancialInputs: FinancialInputs = {
@@ -19,7 +19,10 @@ export const getMonthlyInvestable = (inputs: FinancialInputs) =>
   Math.max(0, inputs.monthlySalaryManwon - inputs.monthlySpendManwon);
 
 export const getPortfolioModel = (inputs: FinancialInputs): PortfolioModel =>
-  portfolioModels[inputs.riskProfile];
+  buildGoalAwarePortfolioModel(portfolioModels[inputs.riskProfile], inputs);
+
+export const applyGoalAwarePortfolioModel = (model: PortfolioModel, inputs: FinancialInputs): PortfolioModel =>
+  buildGoalAwarePortfolioModel(model, inputs);
 
 export const simulateMonths = (
   initialManwon: number,
