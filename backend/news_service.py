@@ -125,6 +125,7 @@ def _build_news_keywords(request: RelatedNewsRequest) -> list[str]:
             "seed": "목돈 마련 투자",
             "car": "자동차 구매 자금",
             "wedding": "결혼자금 투자",
+            "other": "재무 목표 투자",
         }[request.goalType.value]
         if goal_keyword not in keywords:
             keywords.append(goal_keyword)

@@ -1,8 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from asset_valuation_service import evaluate_asset_portfolio
 from news_service import NewsServiceError, get_related_news, get_related_news_v1
 from portfolio_ai_service import generate_portfolio_recommendation
 from schemas import (
+    AssetValuationRequest,
+    AssetValuationResponse,
     PortfolioRecommendationRequest,
     PortfolioRecommendationResponse,
     RelatedNewsRequest,
@@ -37,6 +40,14 @@ def related_news(tickers: str):
 )
 def create_portfolio_recommendation(request: PortfolioRecommendationRequest):
     return generate_portfolio_recommendation(request)
+
+
+@app.post(
+    "/api/v1/assets/valuation",
+    response_model=AssetValuationResponse,
+)
+def create_asset_valuation(request: AssetValuationRequest):
+    return evaluate_asset_portfolio(request)
 
 
 @app.post(

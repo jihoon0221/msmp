@@ -97,9 +97,12 @@ http://127.0.0.1:5173/
 8. 주식/ETF는 종목명을 검색해서 선택합니다.
 9. 저장 후 자산 목록과 홈 차트가 바뀌는지 확인합니다.
 
-현재 추천 기능은 실제 AI가 아니라 임시 템플릿입니다. 백엔드 서버가 꺼져 있어도 버튼을 누르면 로컬 템플릿으로 넘어가게 되어 있습니다.
+추천비중 계산은 FastAPI 백엔드가 담당합니다. 백엔드 서버가 꺼져 있으면 개발 편의를 위해 프론트의 로컬 fallback 모델로 대시보드가 표시됩니다.
+실제 보유자산 평가액, 수익률, 내 자산 기준 비중도 FastAPI 백엔드가 계산합니다.
 
-현재 가격 조회도 실제 시세가 아니라 mock 가격입니다. Twelve Data 또는 EODHD API Key는 아직 필요 없습니다.
+현재 주식/ETF 가격 조회는 실제 시세가 아니라 mock 가격입니다. Twelve Data 또는 EODHD API Key는 아직 필요 없습니다.
+미국 주식/ETF는 USD 금액을 먼저 보여주고 괄호 안에 최신 USD/KRW 기준 원화 환산액을 같이 표시합니다.
+USD 채권 평가는 Frankfurter의 USD/KRW 환율을 사용합니다. 저장 시 매수일 환율을 기록하고, 현재 환율은 하루 단위로 캐시해서 사용합니다. 별도 API Key는 필요 없습니다.
 
 ### 4. 자주 나는 문제
 
@@ -123,7 +126,7 @@ http://127.0.0.1:5173/
 
 - 로그인 상태인지 확인합니다.
 - Supabase migration이 적용되어 있는지 확인합니다.
-- `get-stock-price` Edge Function이 배포되어 있는지 확인합니다.
+- `get-stock-price`, `get-exchange-rate` Edge Function이 배포되어 있는지 확인합니다.
 
 ### 5. 팀원이 설치하지 않아도 되는 것
 
@@ -153,10 +156,12 @@ API 계약 초안은 `docs/api.md`에 있습니다.
 보유자산 관리 MVP 스키마와 주식/ETF seed 데이터는 다음 경로에 있습니다.
 
 - `backend/supabase/migrations/20260613000000_asset_management_mvp.sql`
+- `backend/supabase/migrations/20260620001000_exchange_rates_and_bond_fx.sql`
 - `backend/supabase/seed/stocks_seed_400.csv`
 - `backend/supabase/functions/get-stock-price/`
+- `backend/supabase/functions/get-exchange-rate/`
 
-현재 가격 조회는 mock provider를 사용합니다. 실제 시장 데이터는 이후 Twelve Data 또는 EODHD API Key를 Supabase Secrets에 등록하고 `priceProvider.ts`만 교체해서 연결합니다.
+현재 주식/ETF 가격 조회는 mock provider를 사용합니다. 실제 시장 데이터는 이후 Twelve Data 또는 EODHD API Key를 Supabase Secrets에 등록하고 `priceProvider.ts`만 교체해서 연결합니다. USD/KRW 환율은 `get-exchange-rate`가 `exchange_rates`에 캐시합니다.
 
 ## Deployment
 
