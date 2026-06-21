@@ -75,6 +75,9 @@ type ExchangeRateResponse = {
   rate?: ExchangeRateRow;
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const STOCK_PRICE_REFRESH_TTL_MS = DAY_MS;
+const EXCHANGE_RATE_REFRESH_TTL_MS = DAY_MS;
 const LATEST_RATE_MAX_AGE_DAYS = 7;
 
 export type StockAssetInput = {
@@ -163,15 +166,28 @@ export async function listAssetPortfolio(): Promise<AssetPortfolio> {
 
   const typedStockRows = (stockRows ?? []) as unknown as StockAssetRow[];
   const typedBondRows = (bondRows ?? []) as BondAssetRow[];
-  const stockIds = typedStockRows.map((row) => row.stock_id);
+  const stockIds = uniqueValues(typedStockRows.map((row) => row.stock_id));
   const bondRowsWithPurchaseRates = await backfillMissingBondPurchaseFxRates(typedBondRows);
   const exchangeRateCurrencies = filterExchangeRateCurrencies([
     ...typedStockRows.map((row) => row.stocks?.currency ?? ""),
     ...bondRowsWithPurchaseRates.map((row) => row.currency),
   ]);
-  await refreshExchangeRates(exchangeRateCurrencies);
-  const latestPrices = await getLatestStockPrices(stockIds);
-  const latestExchangeRates = await getLatestExchangeRates(exchangeRateCurrencies);
+
+  let latestPrices = await getLatestStockPrices(stockIds);
+  const staleStockIds = stockIds.filter((stockId) => !isFreshTimestamp(latestPrices.get(stockId)?.fetched_at, STOCK_PRICE_REFRESH_TTL_MS));
+  if (staleStockIds.length > 0) {
+    await refreshStockPrices(staleStockIds);
+    latestPrices = await getLatestStockPrices(stockIds);
+  }
+
+  let latestExchangeRates = await getLatestExchangeRates(exchangeRateCurrencies);
+  const staleRateCurrencies = exchangeRateCurrencies.filter(
+    (currency) => !isFreshTimestamp(latestExchangeRates.get(currency)?.fetched_at, EXCHANGE_RATE_REFRESH_TTL_MS),
+  );
+  if (staleRateCurrencies.length > 0) {
+    await refreshExchangeRates(staleRateCurrencies);
+    latestExchangeRates = await getLatestExchangeRates(exchangeRateCurrencies);
+  }
 
   return {
     stockAssets: typedStockRows.map((row) =>
@@ -198,8 +214,6 @@ export async function upsertStockAsset(input: StockAssetInput) {
   );
 
   if (error) throw error;
-
-  await refreshStockPrices([input.stockId]);
 }
 
 export async function updateStockAsset(id: string, input: StockAssetInput) {
@@ -217,8 +231,6 @@ export async function updateStockAsset(id: string, input: StockAssetInput) {
     .eq("id", id);
 
   if (error) throw error;
-
-  await refreshStockPrices([input.stockId]);
 }
 
 export async function createDepositAsset(input: DepositAssetInput) {
@@ -283,7 +295,6 @@ export async function createBondAsset(input: BondAssetInput) {
   });
 
   if (error) throw error;
-  await refreshExchangeRates([input.currency]);
 }
 
 export async function updateBondAsset(id: string, input: BondAssetInput) {
@@ -308,7 +319,6 @@ export async function updateBondAsset(id: string, input: BondAssetInput) {
     .eq("id", id);
 
   if (error) throw error;
-  await refreshExchangeRates([input.currency]);
 }
 
 export async function deleteAsset(assetType: "stock" | "deposit" | "bond", id: string) {
@@ -323,13 +333,14 @@ export async function deleteAsset(assetType: "stock" | "deposit" | "bond", id: s
   if (error) throw error;
 }
 
-export async function refreshStockPrices(stockIds: string[]) {
+async function refreshStockPrices(stockIds: string[]) {
   const client = requireSupabaseClient();
-  if (stockIds.length === 0) return;
+  const targetStockIds = uniqueValues(stockIds);
+  if (targetStockIds.length === 0) return;
 
   const { error } = await client.functions.invoke("get-stock-price", {
     body: {
-      stock_ids: stockIds,
+      stock_ids: targetStockIds,
     },
   });
 
@@ -338,7 +349,7 @@ export async function refreshStockPrices(stockIds: string[]) {
   }
 }
 
-export async function refreshExchangeRates(currencies: string[]) {
+async function refreshExchangeRates(currencies: string[]) {
   const targetCurrencies = filterExchangeRateCurrencies(currencies);
   if (targetCurrencies.length === 0) return;
 
@@ -362,14 +373,11 @@ function requireSupabaseClient() {
 
 async function requireUserId() {
   const client = requireSupabaseClient();
-  const {
-    data: { user },
-    error,
-  } = await client.auth.getUser();
+  const { data, error } = await client.auth.getSession();
 
   if (error) throw error;
-  if (!user) throw new AssetRepositoryError("로그인 후 보유자산을 관리할 수 있습니다.");
-  return user.id;
+  if (!data.session?.user) throw new AssetRepositoryError("로그인 후 보유자산을 관리할 수 있습니다.");
+  return data.session.user.id;
 }
 
 async function getLatestStockPrices(stockIds: string[]) {
@@ -444,7 +452,7 @@ async function backfillMissingBondPurchaseFxRates(rows: BondAssetRow[]) {
 }
 
 function filterExchangeRateCurrencies(currencies: string[]) {
-  return Array.from(new Set(currencies.filter((currency) => currency === "USD")));
+  return uniqueValues(currencies.filter((currency) => currency === "USD"));
 }
 
 async function resolveBondPurchaseFxRate(input: BondAssetInput) {
@@ -542,4 +550,14 @@ function emptyToNull(value?: string) {
 
 function toDateString(value: number) {
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function isFreshTimestamp(value: string | null | undefined, ttlMs: number) {
+  if (!value) return false;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && Date.now() - timestamp < ttlMs;
 }

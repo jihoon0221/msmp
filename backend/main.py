@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from asset_valuation_service import evaluate_asset_portfolio
-from config import get_backend_service_status
-from news_service import NewsServiceError, get_related_news, get_related_news_v1
+from auth import require_authenticated_user
+from config import get_allowed_origins, get_backend_service_status
+from news_service import NewsServiceError, get_related_news_v1
 from portfolio_ai_service import generate_portfolio_recommendation
 from schemas import (
     AssetValuationRequest,
@@ -18,10 +19,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,18 +31,10 @@ def health_check():
     return BackendHealthResponse(status="ok", services=get_backend_service_status())
 
 
-@app.get("/api/news/related")
-def related_news(tickers: str):
-    ticker_list = [ticker.strip() for ticker in tickers.split(",") if ticker.strip()]
-    try:
-        return get_related_news(ticker_list)
-    except NewsServiceError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
 @app.post(
     "/api/v1/portfolio/recommendations",
     response_model=PortfolioRecommendationResponse,
+    dependencies=[Depends(require_authenticated_user)],
 )
 def create_portfolio_recommendation(request: PortfolioRecommendationRequest):
     return generate_portfolio_recommendation(request)
@@ -53,6 +43,7 @@ def create_portfolio_recommendation(request: PortfolioRecommendationRequest):
 @app.post(
     "/api/v1/assets/valuation",
     response_model=AssetValuationResponse,
+    dependencies=[Depends(require_authenticated_user)],
 )
 def create_asset_valuation(request: AssetValuationRequest):
     return evaluate_asset_portfolio(request)
@@ -61,6 +52,7 @@ def create_asset_valuation(request: AssetValuationRequest):
 @app.post(
     "/api/v1/news/related",
     response_model=RelatedNewsResponse,
+    dependencies=[Depends(require_authenticated_user)],
 )
 def related_news_v1(request: RelatedNewsRequest):
     if (

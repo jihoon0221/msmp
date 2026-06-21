@@ -11,10 +11,20 @@ def is_env_set(name: str) -> bool:
     return bool(os.getenv(name))
 
 
+def get_allowed_origins() -> list[str]:
+    raw_value = os.getenv("API_ALLOWED_ORIGINS", "")
+    origins = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
+    return origins or [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+
 def get_backend_service_status() -> dict[str, bool]:
     return {
         "portfolioRecommendation": True,
         "assetValuation": True,
+        "authGuard": is_env_set("SUPABASE_JWT_SECRET"),
         "naverNews": is_env_set("NAVER_CLIENT_ID") and is_env_set("NAVER_CLIENT_SECRET"),
         "geminiDigest": is_env_set("GEMINI_API_KEY"),
     }

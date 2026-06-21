@@ -37,7 +37,6 @@ def evaluate_asset_portfolio(request: AssetValuationRequest) -> AssetValuationRe
     return AssetValuationResponse(
         totalValueKrw=round_money(total_value_krw),
         currencySummaries=build_currency_summaries(
-            request,
             stock_valuations,
             deposit_valuations,
             bond_valuations,
@@ -115,7 +114,6 @@ def evaluate_bond_asset(asset: BondAssetValuationInput) -> BondAssetValuation:
 
 
 def build_currency_summaries(
-    request: AssetValuationRequest,
     stock_valuations: list[StockAssetValuation],
     deposit_valuations: list[DepositAssetValuation],
     bond_valuations: list[BondAssetValuation],

@@ -13,8 +13,6 @@ export const defaultFinancialInputs: FinancialInputs = {
   riskProfile: "aggressive",
 };
 
-export const riskOrder = ["stable", "neutral", "aggressive"] as const;
-
 export const getMonthlyInvestable = (inputs: FinancialInputs) =>
   Math.max(0, inputs.monthlySalaryManwon - inputs.monthlySpendManwon);
 

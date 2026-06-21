@@ -33,6 +33,7 @@ function App() {
     () => ({ ...inputs, currentAssetsManwon: assetTotalManwon }),
     [assetTotalManwon, inputs],
   );
+  const sessionUserId = session?.user.id ?? null;
   const fallbackModel = useMemo(() => getFallbackPortfolioModel(inputsWithAssetTotal), [inputsWithAssetTotal]);
   const [recommendedModel, setRecommendedModel] = useState<PortfolioModel | null>(null);
   const model = recommendedModel ?? fallbackModel;
@@ -57,6 +58,8 @@ function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (_event === "INITIAL_SESSION") return;
+
       setSession(nextSession);
       if (!nextSession) {
         setAssetPortfolio(emptyAssetPortfolio);
@@ -74,7 +77,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!session) return;
+    if (!sessionUserId) return;
 
     let ignore = false;
     setAssetPortfolioLoaded(false);
@@ -95,7 +98,7 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [session]);
+  }, [sessionUserId]);
 
   useEffect(() => {
     if (!assetPortfolioLoaded) return;
@@ -103,6 +106,11 @@ function App() {
     let ignore = false;
 
     async function runValuation() {
+      if (isAssetPortfolioEmpty(assetPortfolio)) {
+        setAssetValuation(emptyAssetValuation);
+        return;
+      }
+
       try {
         const nextValuation = await requestAssetValuation(assetPortfolio);
         if (!ignore) setAssetValuation(nextValuation);
@@ -231,6 +239,10 @@ function App() {
       {renderContent()}
     </AppShell>
   );
+}
+
+function isAssetPortfolioEmpty(portfolio: AssetPortfolio) {
+  return portfolio.stockAssets.length === 0 && portfolio.depositAssets.length === 0 && portfolio.bondAssets.length === 0;
 }
 
 function AuthLoadingView() {

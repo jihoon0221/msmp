@@ -5,10 +5,10 @@
 | 항목 | 내용 |
 | --- | --- |
 | 문서명 | Money Pilot API 계약서 |
-| 버전 | v0.3 |
+| 버전 | v0.4 |
 | 상태 | Draft |
 | 기준 브랜치 | `feature/portfolio-chart-labels` |
-| 기준일 | 2026-06-20 |
+| 기준일 | 2026-06-21 |
 | 대상 기능 | 추천 포트폴리오, 보유자산 입력, 보유자산 평가 계산, mock 현재가 조회, USD 환율 평가, 보유자산 기반 뉴스 조회 |
 
 ## 1. 결정 사항
@@ -50,6 +50,8 @@
 | `TWELVE_DATA_API_KEY` 또는 `EODHD_API_KEY` | mock 가격을 실제 시장 가격으로 바꾸는 시점 | 필요 없음. mock 가격으로 계속 동작 |
 | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | FastAPI 뉴스 탭에서 실제 네이버 뉴스 조회를 테스트할 때 | 뉴스 탭에 실패 메시지 표시 |
 | `GEMINI_API_KEY` | FastAPI 뉴스 탭에서 보유 종목 AI 요약을 테스트할 때 | 기사 목록은 표시되고 AI 요약 카드만 비어 있음 |
+| `SUPABASE_JWT_SECRET` | 배포된 FastAPI가 Supabase access token을 검증할 때 | FastAPI 보호 endpoint가 `503` 반환 |
+| `API_ALLOWED_ORIGINS` | 로컬/배포 프론트에서 배포된 FastAPI를 호출할 때 | 브라우저 CORS 차단 |
 
 ## 2. 전체 구조
 
@@ -57,7 +59,7 @@
 
 | 구간 | 역할 | 사용 파일 |
 | --- | --- | --- |
-| FastAPI | 포트폴리오 추천, 보유자산 평가 계산, 뉴스 조회 | `backend/main.py`, `backend/schemas.py`, `backend/asset_valuation_service.py` |
+| FastAPI | 포트폴리오 추천, 보유자산 평가 계산, 뉴스 조회, Supabase JWT 검증 | `backend/main.py`, `backend/auth.py`, `backend/schemas.py`, `backend/asset_valuation_service.py` |
 | Supabase | 보유자산 DB, 주식/ETF 검색, 가격 캐시, 인증/RLS | `backend/supabase/migrations`, `frontend/src/services/assetRepository.ts` |
 | Supabase Edge Function | 보유 주식 현재가 조회 및 `stock_prices` 캐시 저장 | `backend/supabase/functions/get-stock-price` |
 | Supabase Edge Function | USD/KRW 환율 조회 및 `exchange_rates` 캐시 저장 | `backend/supabase/functions/get-exchange-rate` |
@@ -77,8 +79,10 @@
 ### FastAPI Base URL
 
 ```text
-VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_BASE_URL=https://<deployed-fastapi-domain>
 ```
+
+로컬 FastAPI를 직접 띄워 테스트할 때만 `http://127.0.0.1:8000` 또는 실행 포트로 바꾼다.
 
 ### Health Check
 
@@ -94,6 +98,7 @@ type BackendHealthResponse = {
   services: {
     portfolioRecommendation: boolean;
     assetValuation: boolean;
+    authGuard: boolean;
     naverNews: boolean;
     geminiDigest: boolean;
   };
@@ -117,14 +122,19 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 
 ### 인증
 
-보유자산 기능은 Supabase Auth 세션이 필요하다.
+프론트는 Supabase Auth 세션이 필요하다. FastAPI의 `POST /api/v1/*` endpoint는 Supabase access token을 `Authorization` 헤더로 받아 검증한다.
+
+```http
+Authorization: Bearer <supabase-access-token>
+```
 
 | 기능 | 인증 |
 | --- | --- |
-| 추천 포트폴리오 | MVP 기준 선택 |
+| 추천 포트폴리오 | 필수 |
 | 보유자산 조회/저장/삭제 | 필수 |
 | 가격 갱신 Edge Function | 필수 |
-| 뉴스 조회 | MVP 기준 선택 |
+| 보유자산 평가 계산 | 필수 |
+| 뉴스 조회 | 필수 |
 
 ### 변수명 규칙
 
@@ -323,7 +333,7 @@ type ProductCandidate = {
 };
 ```
 
-`allocations`는 백엔드가 최종 추천비중으로 계산해서 반환한다. 현재 MVP의 화면 기준 자산군은 `stock-etf`, `deposit-savings`, `bond` 세 가지이며, 프론트는 이 비중을 다시 보정하지 않는다. 백엔드가 실패한 개발 환경에서만 프론트 로컬 fallback 모델을 사용한다.
+`allocations`는 백엔드가 최종 추천비중으로 계산해서 반환한다. 현재 MVP의 화면 기준 자산군은 `stock-etf`, `deposit-savings`, `bond` 세 가지이며, 프론트는 이 비중을 다시 보정하지 않는다. 개발 중 FastAPI가 내려간 경우에만 프론트 로컬 fallback 모델을 사용한다.
 
 ### 프론트 사용 위치
 
@@ -457,6 +467,8 @@ type RelatedNewsRequest = {
 
 `tickers`, `assetNames`, `candidateQueries`, `goalType`, `riskProfile` 중 최소 하나는 있어야 한다.
 
+같은 요청 조합은 FastAPI가 2시간 동안 캐시한다. 캐시가 살아있는 동안에는 네이버 뉴스 재수집과 Gemini 요약 재생성을 하지 않고 이전 응답을 반환한다.
+
 ### Request Example
 
 ```json
@@ -553,7 +565,7 @@ type RelatedNewsDigestStatus = {
 | `average_buy_price` | `numeric` | 평균 매수가 |
 | `memo` | `text` | 메모 |
 
-저장 구현은 `assetRepository.upsertStockAsset()`가 담당한다. 저장 후 `get-stock-price` Edge Function을 호출해 mock 현재가를 `stock_prices`에 캐시한다.
+저장 구현은 `assetRepository.upsertStockAsset()`가 담당한다. 저장 후 `listAssetPortfolio()`가 보유자산을 다시 읽을 때 24시간 이내 가격 캐시가 없거나 오래된 종목만 `get-stock-price` Edge Function으로 갱신한다.
 
 ## 6.3 `stock_prices`
 
@@ -799,19 +811,19 @@ type PriceProviderResult = {
 2. `App.tsx`가 `requestPortfolioRecommendation(inputs)`를 호출한다.
 3. FastAPI가 목표 기반 추천비중과 설명 근거를 계산해 추천 모델을 반환한다.
 4. 프론트는 추천비중을 재계산하지 않고 `PortfolioDashboard`에 표시한다.
-5. FastAPI가 꺼진 개발 환경에서는 프론트 로컬 fallback 모델을 사용한다.
+5. 개발 중 FastAPI가 꺼진 경우에만 프론트 로컬 fallback 모델을 사용한다.
 
 ## 9.2 보유자산 입력
 
 1. 사용자가 `AssetsView`에서 주식/ETF, 예금/적금, 채권 중 하나를 선택한다.
 2. 주식/ETF는 `stocks` 테이블에서 검색한다.
 3. 주식/ETF 저장 시 `user_stock_assets`에 upsert한다.
-4. 저장 직후 `get-stock-price` Edge Function을 호출한다.
-5. Edge Function은 mock 가격을 `stock_prices`에 저장한다.
-6. USD 채권 저장/조회 시 `get-exchange-rate` Edge Function을 호출한다.
-7. Edge Function은 USD/KRW 환율을 `exchange_rates`에 저장한다.
-8. 프론트는 `listAssetPortfolio()`로 보유자산, 최신 가격, 최신 환율을 다시 읽는다.
-9. `App.tsx`는 `requestAssetValuation(assetPortfolio)`를 호출해 FastAPI 평가 결과를 받는다.
+4. 프론트는 `listAssetPortfolio()`로 보유자산, 최신 가격, 최신 환율을 다시 읽는다.
+5. `listAssetPortfolio()`는 24시간 이내 가격 캐시가 없는 주식/ETF만 `get-stock-price` Edge Function으로 갱신한다.
+6. USD 채권 매수일 환율이 없으면 `get-exchange-rate` Edge Function으로 historical 환율을 한 번 기록한다.
+7. USD/KRW 최신 환율은 24시간 이내 캐시가 없거나 오래된 경우만 `get-exchange-rate` Edge Function으로 갱신한다.
+8. Edge Function은 가격을 `stock_prices`, 환율을 `exchange_rates`에 저장한다.
+9. `App.tsx`는 보유자산이 있을 때만 `requestAssetValuation(assetPortfolio)`를 호출해 FastAPI 평가 결과를 받는다.
 10. `App.tsx`는 `AssetPortfolio`와 `AssetValuation`을 홈/자산/뉴스 화면에 전달한다.
 
 ## 9.3 홈 대시보드 실제 비중
@@ -827,6 +839,7 @@ type PriceProviderResult = {
 2. `getAssetPortfolioNewsInputs()`가 보유 종목 코드와 자산명을 만든다.
 3. 추천 후보의 `candidate.query`도 함께 검색어로 전달한다.
 4. FastAPI `POST /api/v1/news/related`가 네이버 뉴스 API를 호출한다.
+5. 같은 요청은 2시간 동안 FastAPI 캐시 응답을 사용하므로 네이버 뉴스 수집과 Gemini 요약 생성을 반복하지 않는다.
 
 ## 10. 현재 제한 사항
 
@@ -844,6 +857,7 @@ type PriceProviderResult = {
 1. Supabase migration 적용
 2. `stocks_seed_400.csv`를 `public.stocks`에 import
 3. `get-stock-price`, `get-exchange-rate` Edge Function 배포
-4. 프론트 `.env.local`에 Supabase URL/anon key 입력
-5. 로그인 상태에서 자산 추가부터 홈 차트/뉴스까지 end-to-end 확인
-6. 실제 가격 API가 필요해지는 시점에 Twelve Data 또는 EODHD를 선택하고 Supabase Secrets 등록
+4. FastAPI 배포 환경변수에 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `GEMINI_API_KEY`, `SUPABASE_JWT_SECRET`, `API_ALLOWED_ORIGINS` 입력
+5. 프론트 `.env.local`에 배포 FastAPI URL, Supabase URL/anon key 입력
+6. 로그인 상태에서 자산 추가부터 홈 차트/뉴스까지 end-to-end 확인
+7. 실제 가격 API가 필요해지는 시점에 Twelve Data 또는 EODHD를 선택하고 Supabase Secrets 등록

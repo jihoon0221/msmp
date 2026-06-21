@@ -2,7 +2,7 @@ import {
   FileText,
   RotateCw,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "../../components/ui/Card";
 import { getAssetPortfolioNewsInputs } from "../../lib/assetCalculations";
 import { requestRelatedNews } from "../../services/moneyPilotApi";
@@ -30,7 +30,9 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
-const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v4";
+const NEWS_SHORT_CACHE_TTL_MS = 10 * 60 * 1000;
+const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v8";
+const NEWS_CANDIDATES_PER_CATEGORY = 1;
 
 type CachedNewsPayload = {
   articles: RelatedNewsArticle[];
@@ -45,11 +47,19 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
+  const lastLoadedCacheKeyRef = useRef<string | null>(null);
   const newsInputs = useMemo(() => getAssetPortfolioNewsInputs(assetPortfolio), [assetPortfolio]);
   const { assetNames, tickers } = newsInputs;
   const candidateQueries = useMemo(
-    () => model.allocations.flatMap((allocation) => allocation.candidates.map((candidate) => candidate.query)),
-    [model],
+    () =>
+      model.allocations.flatMap((allocation) => {
+        const queries = allocation.candidates
+          .slice(0, NEWS_CANDIDATES_PER_CATEGORY)
+          .map((candidate) => candidate.query)
+          .filter(Boolean);
+        return queries.length > 0 ? queries : [allocation.label];
+      }),
+    [model.allocations],
   );
   const cacheKey = useMemo(
     () =>
@@ -62,6 +72,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
       }),
     [assetNames, candidateQueries, inputs.goalType, inputs.riskProfile, tickers],
   );
+  const digestBadge = digestStatus?.status === "success" ? "Gemini" : digestSummary.length > 0 ? "기사 기반" : "Gemini";
 
   useEffect(() => {
     let ignore = false;
@@ -74,13 +85,18 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
 
       setIsLoading(true);
       setError(null);
+      setArticles([]);
+      setDigestStatus(null);
+      setDigestSummary([]);
 
       try {
-        const cachedNews = refreshCount === 0 ? readCachedNews(cacheKey) : null;
+        const canUseLocalCache = refreshCount === 0 && lastLoadedCacheKeyRef.current === cacheKey;
+        const cachedNews = canUseLocalCache ? readCachedNews(cacheKey) : null;
         if (cachedNews) {
           setArticles(cachedNews.articles);
           setDigestStatus(cachedNews.digestStatus);
           setDigestSummary(cachedNews.digestSummary);
+          lastLoadedCacheKeyRef.current = cacheKey;
           setIsLoading(false);
           return;
         }
@@ -96,11 +112,14 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         setArticles(newsResponse.articles);
         setDigestStatus(newsResponse.digestStatus ?? null);
         setDigestSummary(newsResponse.digestSummary ?? []);
-        writeCachedNews(cacheKey, {
-          articles: newsResponse.articles,
-          digestStatus: newsResponse.digestStatus ?? null,
-          digestSummary: newsResponse.digestSummary ?? [],
-        });
+        lastLoadedCacheKeyRef.current = cacheKey;
+        if (newsResponse.articles.length > 0 || newsResponse.digestSummary?.length > 0) {
+          writeCachedNews(cacheKey, {
+            articles: newsResponse.articles,
+            digestStatus: newsResponse.digestStatus ?? null,
+            digestSummary: newsResponse.digestSummary ?? [],
+          });
+        }
       } catch {
         if (ignore) return;
         setArticles([]);
@@ -130,7 +149,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
           onClick={() => setRefreshCount((value) => value + 1)}
           disabled={isLoading}
         >
-          다른 기사
+          새로고침
           <RotateCw size={11} className={isLoading ? "animate-spin" : undefined} />
         </button>
       </div>
@@ -138,13 +157,13 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         <p className="mb-1 text-[10px] text-slate-400">
           현재 나의 보유 종목과 {riskLabels[inputs.riskProfile]} 투자 성향을 기반으로 선별한 관련 뉴스입니다.
         </p>
-        <p className="text-[9px] font-semibold text-blue-300">네이버 뉴스 검색 API에서 최신 관련 기사를 가져옵니다.</p>
+        <p className="text-[9px] font-semibold text-blue-300">네이버 뉴스 검색 API 기준으로 2시간마다 갱신합니다.</p>
       </div>
 
       <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-lg">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="text-xs font-extrabold">보유 종목 AI 요약</h3>
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[8px] font-bold text-blue-100">Gemini</span>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[8px] font-bold text-blue-100">{digestBadge}</span>
         </div>
         {isLoading ? (
           <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
@@ -205,7 +224,7 @@ function buildNewsCacheKey(params: {
 }
 
 function normalizeCacheValues(values: string[]) {
-  return values.map((value) => value.trim()).filter(Boolean).sort();
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort();
 }
 
 function readCachedNews(cacheKey: string): CachedNewsPayload | null {
@@ -214,15 +233,26 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
     if (!rawValue) return null;
 
     const parsed = JSON.parse(rawValue) as CachedNewsPayload & { cachedAt?: number };
-    if (!parsed.cachedAt || Date.now() - parsed.cachedAt > NEWS_CACHE_TTL_MS) {
+    const parsedArticles = Array.isArray(parsed.articles) ? parsed.articles : [];
+    const parsedDigestSummary = Array.isArray(parsed.digestSummary) ? parsed.digestSummary : [];
+    if (parsedArticles.length === 0 && parsedDigestSummary.length === 0) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+
+    const cacheTtlMs =
+      parsed.digestStatus?.status === "failed" || parsedArticles.length === 0
+        ? NEWS_SHORT_CACHE_TTL_MS
+        : NEWS_CACHE_TTL_MS;
+    if (!parsed.cachedAt || Date.now() - parsed.cachedAt > cacheTtlMs) {
       localStorage.removeItem(cacheKey);
       return null;
     }
 
     return {
-      articles: Array.isArray(parsed.articles) ? parsed.articles : [],
+      articles: parsedArticles,
       digestStatus: parsed.digestStatus ?? null,
-      digestSummary: Array.isArray(parsed.digestSummary) ? parsed.digestSummary : [],
+      digestSummary: parsedDigestSummary,
     };
   } catch {
     localStorage.removeItem(cacheKey);

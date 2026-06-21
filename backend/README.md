@@ -9,6 +9,7 @@ React frontend
   -> FastAPI /api/v1/portfolio/recommendations
   -> FastAPI /api/v1/assets/valuation
   -> FastAPI /api/v1/news/related
+  -> Supabase access token in Authorization header
   -> Supabase Auth / DB / Edge Functions
 
 FastAPI
@@ -26,6 +27,7 @@ Supabase Edge Functions
 
 ```text
 main.py                  API route definitions
+auth.py                  Supabase access-token verification for FastAPI routes
 schemas.py               Request/response DTOs
 portfolio_ai_service.py  Goal-aware portfolio recommendation calculation boundary
 asset_valuation_service.py Actual asset valuation calculation boundary
@@ -36,7 +38,7 @@ supabase/functions/get-exchange-rate/ USD/KRW exchange-rate cache boundary
 
 현재 `portfolio_ai_service.py`는 입력된 목표, 현재 자산, 월 소득/지출, 투자성향을 기준으로 `주식/ETF`, `예금/적금`, `채권` 추천비중을 계산합니다. 실제 AI 연동 전까지 이 파일이 추천비중 계산의 단일 책임 지점입니다.
 `asset_valuation_service.py`는 프론트가 Supabase에서 읽은 보유자산을 받아 자산군별 현재 평가액, 수익률, 실제 비중을 계산합니다.
-`news_service.py`는 네이버 뉴스 API와 Gemini 요약을 FastAPI 내부에서 호출합니다.
+`news_service.py`는 네이버 뉴스 API와 Gemini 요약을 FastAPI 내부에서 호출합니다. 같은 뉴스 요청은 FastAPI 프로세스 안에서 2시간 동안 캐시해서 탭 진입이나 새로고침 버튼 때문에 Naver/Gemini를 반복 호출하지 않게 합니다.
 가격 조회의 공식 경로는 FastAPI가 아니라 Supabase Edge Function입니다. 주식/ETF mock 현재가는 `get-stock-price`, USD 채권 평가용 USD/KRW 환율은 `get-exchange-rate`가 담당합니다.
 
 ## FastAPI Env
@@ -47,7 +49,15 @@ supabase/functions/get-exchange-rate/ USD/KRW exchange-rate cache boundary
 NAVER_CLIENT_ID=
 NAVER_CLIENT_SECRET=
 GEMINI_API_KEY=
+SUPABASE_JWT_SECRET=
+API_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
+
+`SUPABASE_JWT_SECRET`은 Supabase Dashboard의 JWT secret과 같은 값입니다. FastAPI가 배포되어 있어도 이 값은 서버 환경변수에만 둡니다.
+`API_ALLOWED_ORIGINS`에는 로컬 프론트 주소와 배포된 프론트 주소를 쉼표로 넣습니다.
+
+`POST /api/v1/portfolio/recommendations`, `POST /api/v1/assets/valuation`, `POST /api/v1/news/related`는 Supabase 로그인 세션의 access token이 필요합니다.
+프론트는 `Authorization: Bearer <access_token>` 헤더를 자동으로 붙입니다.
 
 설정 여부는 키 값을 노출하지 않는 헬스체크로 확인합니다.
 
@@ -63,6 +73,7 @@ curl http://127.0.0.1:8001/api/v1/health
   "services": {
     "portfolioRecommendation": true,
     "assetValuation": true,
+    "authGuard": true,
     "naverNews": true,
     "geminiDigest": true
   }
@@ -83,9 +94,9 @@ backend/supabase/functions/get-exchange-rate/
 
 `stocks_seed_400.csv` is imported into `public.stocks`; re-imports should upsert by `symbol`.
 
-`get-stock-price` currently uses mock prices by design. Complete the asset-management flow with mock data first; later replace `priceProvider.ts` with Twelve Data or EODHD and keep API keys in Supabase Secrets.
+`get-stock-price` currently uses mock prices by design. The frontend calls it only when a held stock has no price cache or the cached price is older than 24 hours. Complete the asset-management flow with mock data first; later replace `priceProvider.ts` with Twelve Data or EODHD and keep API keys in Supabase Secrets.
 
-`get-exchange-rate` uses Frankfurter for USD/KRW, caches one row per currency pair and date in `public.exchange_rates`, and does not require an API key. The frontend uses historical rates to record a USD bond's purchase-date FX rate, then compares it against the latest cached rate.
+`get-exchange-rate` uses Frankfurter for USD/KRW, caches one row per currency pair and date in `public.exchange_rates`, and does not require an API key. The frontend uses historical rates to record a USD bond's purchase-date FX rate, then compares it against the latest cached rate. Latest USD/KRW is refreshed only when the cached row is older than 24 hours.
 
 ## Migration
 

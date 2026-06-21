@@ -8,6 +8,7 @@ import type {
   RelatedNewsDigestStatus,
   RelatedNewsDigestSummary,
 } from "../types/domain";
+import { supabase } from "../lib/supabase";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -34,7 +35,7 @@ type RelatedNewsResponse = {
   digestStatus: RelatedNewsDigestStatus;
 };
 
-export class MoneyPilotApiError extends Error {
+class MoneyPilotApiError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "MoneyPilotApiError";
@@ -93,10 +94,12 @@ export async function requestRelatedNews(params: {
 }
 
 async function postJson<ResponseBody>(path: string, body: unknown): Promise<ResponseBody> {
+  const accessToken = await getAccessToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -106,4 +109,14 @@ async function postJson<ResponseBody>(path: string, body: unknown): Promise<Resp
   }
 
   return (await response.json()) as ResponseBody;
+}
+
+async function getAccessToken() {
+  if (!supabase) return null;
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  return session?.access_token ?? null;
 }

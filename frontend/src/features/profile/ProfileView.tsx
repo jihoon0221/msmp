@@ -3,13 +3,18 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
-import type { ModalContent, PortfolioModel } from "../../types/domain";
+import type { PortfolioModel } from "../../types/domain";
 
 type ProfileViewProps = {
   model: PortfolioModel;
   userEmail?: string;
   onResetGoal: () => void;
   onSignOut: () => void | Promise<void>;
+};
+
+type ModalContent = {
+  title: string;
+  body: string;
 };
 
 const menuItems: Array<{ icon: ReactNode; title: string; body: string }> = [

@@ -153,24 +153,28 @@ export function AssetsView({
   useEffect(() => {
     let ignore = false;
 
-    async function runSearch() {
-      const normalizedQuery = stockQuery.trim();
-      if (!formOpen || assetType !== "stock" || !normalizedQuery) {
-        setStockResults((current) => (current.length > 0 ? [] : current));
-        return;
-      }
-
-      try {
-        const results = await searchStocks(normalizedQuery, "all");
-        if (!ignore) setStockResults(results);
-      } catch {
-        if (!ignore) setStockResults([]);
-      }
+    const normalizedQuery = stockQuery.trim();
+    if (!formOpen || assetType !== "stock" || !normalizedQuery) {
+      setStockResults((current) => (current.length > 0 ? [] : current));
+      return;
     }
 
-    void runSearch();
+    const timeoutId = window.setTimeout(() => {
+      async function runSearch() {
+        try {
+          const results = await searchStocks(normalizedQuery, "all");
+          if (!ignore) setStockResults(results);
+        } catch {
+          if (!ignore) setStockResults([]);
+        }
+      }
+
+      void runSearch();
+    }, 250);
+
     return () => {
       ignore = true;
+      window.clearTimeout(timeoutId);
     };
   }, [assetType, formOpen, stockQuery]);
 
@@ -489,7 +493,7 @@ export function AssetsView({
 
                 <NumberInput label="보유 수량" value={stockForm.quantity} onChange={(value) => setStockForm((current) => ({ ...current, quantity: value }))} />
                 <MoneyInput
-                  label="평균 매수가"
+                  label={getAverageBuyPriceLabel(selectedStock)}
                   value={stockForm.averageBuyPrice}
                   onChange={(value) => setStockForm((current) => ({ ...current, averageBuyPrice: value }))}
                 />
@@ -901,6 +905,12 @@ function formatNumericInput(value: string) {
 
 function formatAmount(value: number) {
   return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 }).format(value);
+}
+
+function getAverageBuyPriceLabel(stock: Stock | null) {
+  if (stock?.currency === "KRW") return "평균 매수가 (원)";
+  if (stock?.currency === "USD") return "평균 매수가 (달러)";
+  return "평균 매수가";
 }
 
 function formatStockAssetValue(asset: StockAsset, valuation?: StockAssetValuation) {

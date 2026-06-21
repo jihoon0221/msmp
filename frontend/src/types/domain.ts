@@ -186,8 +186,3 @@ export type AssetValuation = {
   bondAssets: BondAssetValuation[];
   generatedAt: string;
 };
-
-export type ModalContent = {
-  title: string;
-  body: string;
-};
