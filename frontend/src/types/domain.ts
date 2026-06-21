@@ -65,6 +65,11 @@ export type RelatedNewsArticle = {
   fetchedAt: string;
 };
 
+export type RelatedNewsDigestSummary = {
+  ticker: string;
+  summary: string;
+};
+
 export type StockAssetFilter = "all" | "kr_stock" | "us_stock" | "kr_etf" | "us_etf";
 
 export type Stock = {

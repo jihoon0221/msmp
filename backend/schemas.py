@@ -84,6 +84,7 @@ class PortfolioRecommendationResponse(BaseModel):
 class RelatedNewsRequest(BaseModel):
     tickers: list[str] = Field(default_factory=list)
     assetNames: list[str] = Field(default_factory=list)
+    candidateQueries: list[str] = Field(default_factory=list)
     goalType: GoalType | None = None
     riskProfile: RiskProfile | None = None
     limitPerKeyword: int = Field(default=1, ge=1, le=5)
@@ -103,3 +104,4 @@ class RelatedNewsArticle(BaseModel):
 
 class RelatedNewsResponse(BaseModel):
     articles: list[RelatedNewsArticle]
+    digestSummary: list[dict] = Field(default_factory=list)
