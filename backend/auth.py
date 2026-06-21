@@ -3,12 +3,16 @@ import binascii
 import hashlib
 import hmac
 import json
+import logging
 import time
 from dataclasses import dataclass
 
 import requests
 from fastapi import HTTPException, Request, status
 from config import get_env_value
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,14 @@ def _get_bearer_token(request: Request) -> str:
     authorization = request.headers.get("Authorization", "")
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
+        logger.warning(
+            "Authenticated API request rejected because Authorization Bearer token is missing",
+            extra={
+                "path": request.url.path,
+                "method": request.method,
+                "origin": request.headers.get("Origin"),
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization Bearer 토큰이 필요합니다.",

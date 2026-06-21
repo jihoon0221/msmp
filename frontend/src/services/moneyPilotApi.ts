@@ -9,7 +9,7 @@ import type {
   RelatedNewsDigestStatus,
   RelatedNewsDigestSummary,
 } from "../types/domain";
-import { supabase } from "../lib/supabase";
+import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -98,6 +98,11 @@ export async function requestRelatedNews(params: {
 async function postJson<ResponseBody>(path: string, body: unknown): Promise<ResponseBody> {
   const accessToken = await getAccessToken();
   if (!accessToken) {
+    console.warn("MoneyPilot API request skipped because Supabase access token is missing.", {
+      path,
+      apiBaseUrl: API_BASE_URL,
+      supabaseConfigured: isSupabaseConfigured,
+    });
     throw new MoneyPilotApiError("로그인 세션 토큰을 찾지 못했습니다. 다시 로그인해주세요.");
   }
 
