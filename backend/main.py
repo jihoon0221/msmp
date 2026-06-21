@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from asset_valuation_service import evaluate_asset_portfolio
@@ -14,6 +16,8 @@ from schemas import (
     RelatedNewsRequest,
     RelatedNewsResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -46,7 +50,14 @@ def create_portfolio_recommendation(request: PortfolioRecommendationRequest):
     dependencies=[Depends(require_authenticated_user)],
 )
 def create_asset_valuation(request: AssetValuationRequest):
-    return evaluate_asset_portfolio(request)
+    try:
+        return evaluate_asset_portfolio(request)
+    except Exception as exc:
+        logger.exception("Asset valuation failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"자산 평가 계산에 실패했습니다. ({type(exc).__name__})",
+        ) from exc
 
 
 @app.post(

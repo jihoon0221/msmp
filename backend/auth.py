@@ -3,7 +3,6 @@ import binascii
 import hashlib
 import hmac
 import json
-import os
 import time
 from dataclasses import dataclass
 
@@ -16,6 +15,10 @@ from config import get_env_value
 class AuthenticatedUser:
     user_id: str
     email: str | None = None
+
+
+AUTH_CACHE_TTL_SECONDS = 600
+_AUTH_PAYLOAD_CACHE: dict[str, tuple[int, dict]] = {}
 
 
 def require_authenticated_user(request: Request) -> AuthenticatedUser:
@@ -46,6 +49,10 @@ def _get_bearer_token(request: Request) -> str:
 
 
 def _verify_supabase_jwt(token: str) -> dict:
+    cached_payload = _read_cached_payload(token)
+    if cached_payload is not None:
+        return cached_payload
+
     try:
         header_segment, payload_segment, signature_segment = token.split(".")
         header = _decode_json_segment(header_segment)
@@ -62,6 +69,7 @@ def _verify_supabase_jwt(token: str) -> dict:
         _verify_with_supabase_auth_server(token)
 
     _validate_standard_claims(payload)
+    _cache_payload(token, payload)
     return payload
 
 
@@ -194,3 +202,30 @@ def _has_audience(audience, expected: str) -> bool:
     if isinstance(audience, list):
         return expected in audience
     return False
+
+
+def _read_cached_payload(token: str) -> dict | None:
+    cache_key = _token_cache_key(token)
+    cached_value = _AUTH_PAYLOAD_CACHE.get(cache_key)
+    if cached_value is None:
+        return None
+
+    expires_at, payload = cached_value
+    if expires_at <= int(time.time()):
+        _AUTH_PAYLOAD_CACHE.pop(cache_key, None)
+        return None
+
+    return payload
+
+
+def _cache_payload(token: str, payload: dict) -> None:
+    token_expires_at = _read_timestamp(payload, "exp")
+    cache_expires_at = min(token_expires_at, int(time.time()) + AUTH_CACHE_TTL_SECONDS)
+    if cache_expires_at <= int(time.time()):
+        return
+
+    _AUTH_PAYLOAD_CACHE[_token_cache_key(token)] = (cache_expires_at, payload)
+
+
+def _token_cache_key(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
