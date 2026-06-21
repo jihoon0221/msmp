@@ -2,12 +2,11 @@ import html
 import json
 import os
 import re
-from pathlib import Path
 from datetime import UTC, datetime
 from uuid import uuid4
 
 import requests
-from dotenv import load_dotenv
+from config import is_env_set
 from schemas import RelatedNewsArticle, RelatedNewsRequest, RelatedNewsResponse
 
 
@@ -18,8 +17,6 @@ TICKER_KEYWORDS = {
     "TSLA": "테슬라",
     "005930.KS": "삼성전자",
 }
-
-load_dotenv(Path(__file__).with_name(".env"))
 
 
 class NewsServiceError(RuntimeError):
@@ -33,8 +30,8 @@ def _remove_html(value):
 def get_related_news(tickers, display=1):
     client_id = os.getenv("NAVER_CLIENT_ID")
     client_secret = os.getenv("NAVER_CLIENT_SECRET")
-    print(f"NAVER_CLIENT_ID loaded: {bool(client_id)}", flush=True)
-    print(f"NAVER_CLIENT_SECRET loaded: {bool(client_secret)}", flush=True)
+    print(f"NAVER_CLIENT_ID loaded: {is_env_set('NAVER_CLIENT_ID')}", flush=True)
+    print(f"NAVER_CLIENT_SECRET loaded: {is_env_set('NAVER_CLIENT_SECRET')}", flush=True)
 
     if not client_id or not client_secret:
         raise NewsServiceError("NAVER_CLIENT_ID 또는 NAVER_CLIENT_SECRET이 설정되지 않았습니다.")

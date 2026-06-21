@@ -18,6 +18,11 @@ class RiskProfile(str, Enum):
     AGGRESSIVE = "aggressive"
 
 
+class BackendHealthResponse(BaseModel):
+    status: Literal["ok"]
+    services: dict[str, bool]
+
+
 class GoalInput(BaseModel):
     type: GoalType
     targetAmount: int = Field(ge=0)

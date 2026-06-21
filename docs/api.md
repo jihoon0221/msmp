@@ -13,20 +13,20 @@
 
 ## 1. 결정 사항
 
-이번 단계에서는 **주식/ETF는 mock 가격 조회로 전체 기능을 먼저 완성**한다.
+이번 단계에서는 **국내 주식/ETF는 네이버 금융 조회를 우선 사용하고, 미지원 종목은 mock fallback으로 전체 기능을 유지**한다.
 
-실제 가격 API는 나중에 Twelve Data 또는 EODHD API Key를 Supabase Secrets에 등록한 뒤 `backend/supabase/functions/get-stock-price/priceProvider.ts` 내부 구현만 교체해서 전환한다.
+미국 주식/ETF 실제 가격 API는 나중에 Twelve Data 또는 EODHD API Key를 Supabase Secrets에 등록한 뒤 `backend/supabase/functions/get-stock-price/priceProvider.ts` 내부 구현만 교체해서 전환한다.
 
 보유자산의 실제 평가액, 수익률, 실제 비중은 FastAPI `POST /api/v1/assets/valuation`이 계산한다. 채권은 사용자가 입력한 매수일과 금리를 기준으로 원금/단리 수익을 계산한다. USD 채권은 저장 시 매수일 USD/KRW 환율을 자동 기록하고, 이후 최신 USD/KRW 환율과 비교해 KRW 평가액과 수익률을 보여준다. 미국 주식/ETF는 원 통화 USD 금액을 먼저 표시하고 괄호 안에 최신 USD/KRW 환산액을 함께 표시한다.
 
 | 항목 | 현재 단계 | 실제 API 전환 단계 |
 | --- | --- | --- |
 | 가격 조회 위치 | Supabase Edge Function `get-stock-price` | 동일 |
-| 가격 Provider | `priceProvider.ts` mock 함수 | Twelve Data 또는 EODHD 호출 |
+| 가격 Provider | 네이버 금융 국내 가격 + mock fallback | Twelve Data 또는 EODHD 호출 |
 | API Key 저장 | 필요 없음 | Supabase Secrets |
 | 프론트 변경 | 없음 | 없음 |
 | DB 저장 위치 | `public.stock_prices` | 동일 |
-| 가격 출처 표시 | `source: "mock"` | `source: "twelve_data"` 또는 `source: "eodhd"` |
+| 가격 출처 표시 | `source: "naver"`, `"mock"`, `"mock-fallback"` | `source: "twelve_data"` 또는 `"eodhd"` |
 
 환율 Provider는 Frankfurter를 사용한다.
 
@@ -48,8 +48,8 @@
 | Supabase Edge Function 기본 secrets | `get-stock-price`, `get-exchange-rate` 배포 후 캐시 갱신을 테스트할 때 | 함수가 DB를 읽고 쓸 수 없음 |
 | Frankfurter API Key | 필요 없음 | 공개 endpoint라 계속 동작 |
 | `TWELVE_DATA_API_KEY` 또는 `EODHD_API_KEY` | mock 가격을 실제 시장 가격으로 바꾸는 시점 | 필요 없음. mock 가격으로 계속 동작 |
-| `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | 뉴스 탭에서 실제 네이버 뉴스 조회를 테스트할 때 | 뉴스 탭에 실패 메시지 표시 |
-| `AI_API_KEY` | 규칙 기반 추천비중 계산을 실제 AI 추천으로 바꾸는 시점 | 필요 없음. 백엔드 규칙 기반 추천으로 계속 동작 |
+| `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | FastAPI 뉴스 탭에서 실제 네이버 뉴스 조회를 테스트할 때 | 뉴스 탭에 실패 메시지 표시 |
+| `GEMINI_API_KEY` | FastAPI 뉴스 탭에서 보유 종목 AI 요약을 테스트할 때 | 기사 목록은 표시되고 AI 요약 카드만 비어 있음 |
 
 ## 2. 전체 구조
 
@@ -78,6 +78,26 @@
 
 ```text
 VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+### Health Check
+
+FastAPI 서버 상태와 server-only env 설정 여부를 확인한다. secret 값은 절대 반환하지 않는다.
+
+```http
+GET /api/v1/health
+```
+
+```ts
+type BackendHealthResponse = {
+  status: "ok";
+  services: {
+    portfolioRecommendation: boolean;
+    assetValuation: boolean;
+    naverNews: boolean;
+    geminiDigest: boolean;
+  };
+};
 ```
 
 FastAPI v1 endpoint는 아래 base path를 사용한다.
@@ -417,6 +437,7 @@ POST /api/v1/news/related
 type RelatedNewsRequest = {
   tickers?: string[];
   assetNames?: string[];
+  candidateQueries?: string[];
   goalType?: GoalType;
   riskProfile?: RiskProfile;
   limitPerKeyword?: number;
@@ -428,12 +449,13 @@ type RelatedNewsRequest = {
 | 필드명 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
 | `tickers` | `string[]` | N | 보유 주식/ETF 종목 코드 |
-| `assetNames` | `string[]` | N | 보유 자산명과 추천 후보 검색어 |
+| `assetNames` | `string[]` | N | 보유 자산명 |
+| `candidateQueries` | `string[]` | N | 추천 포트폴리오 후보 검색어 |
 | `goalType` | `GoalType` | N | 목표 유형 |
 | `riskProfile` | `RiskProfile` | N | 투자성향 |
 | `limitPerKeyword` | `number` | N | 키워드당 기사 개수. 기본값 `1`, 최대 `5` |
 
-`tickers`, `assetNames`, `goalType`, `riskProfile` 중 최소 하나는 있어야 한다.
+`tickers`, `assetNames`, `candidateQueries`, `goalType`, `riskProfile` 중 최소 하나는 있어야 한다.
 
 ### Request Example
 
@@ -441,6 +463,7 @@ type RelatedNewsRequest = {
 {
   "tickers": ["005930.KS", "AAPL"],
   "assetNames": ["삼성전자", "TIGER 미국S&P500"],
+  "candidateQueries": ["미국 S&P500 ETF", "단기채 ETF"],
   "goalType": "jeonse",
   "riskProfile": "aggressive",
   "limitPerKeyword": 1
@@ -452,6 +475,7 @@ type RelatedNewsRequest = {
 ```ts
 type RelatedNewsResponse = {
   articles: RelatedNewsArticle[];
+  digestSummary: RelatedNewsDigestSummary[];
 };
 
 type RelatedNewsArticle = {
@@ -464,6 +488,11 @@ type RelatedNewsArticle = {
   url: string;
   publishedAt: string | null;
   fetchedAt: string;
+};
+
+type RelatedNewsDigestSummary = {
+  ticker: string;
+  summary: string;
 };
 ```
 

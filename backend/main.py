@@ -1,11 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from asset_valuation_service import evaluate_asset_portfolio
+from config import get_backend_service_status
 from news_service import NewsServiceError, get_related_news, get_related_news_v1
 from portfolio_ai_service import generate_portfolio_recommendation
 from schemas import (
     AssetValuationRequest,
     AssetValuationResponse,
+    BackendHealthResponse,
     PortfolioRecommendationRequest,
     PortfolioRecommendationResponse,
     RelatedNewsRequest,
@@ -24,6 +26,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/api/v1/health", response_model=BackendHealthResponse)
+def health_check():
+    return BackendHealthResponse(status="ok", services=get_backend_service_status())
+
 
 @app.get("/api/news/related")
 def related_news(tickers: str):
