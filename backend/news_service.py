@@ -23,7 +23,7 @@ GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/
 RELATED_NEWS_CACHE_TTL_SECONDS = 2 * 60 * 60
 RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS = 10 * 60
 RELATED_NEWS_CACHE_MAX_ENTRIES = 64
-RELATED_NEWS_CACHE_VERSION = 8
+RELATED_NEWS_CACHE_VERSION = 9
 NEWS_MAX_HOLDING_TICKERS = 4
 NEWS_MAX_HOLDING_NAMES = 4
 NEWS_MAX_CANDIDATE_QUERIES = 3
@@ -33,10 +33,10 @@ DIGEST_MAX_GROUPS = 8
 DIGEST_MAX_ARTICLES_PER_GROUP = 1
 DIGEST_TITLE_MAX_LENGTH = 100
 DIGEST_SUMMARY_MAX_LENGTH = 140
-BRIEFING_TITLE_MAX_LENGTH = 24
-BRIEFING_OVERVIEW_MAX_LENGTH = 95
-BRIEFING_IMPACT_MAX_LENGTH = 95
-BRIEFING_WATCH_POINT_MAX_LENGTH = 36
+BRIEFING_TITLE_MAX_LENGTH = 20
+BRIEFING_OVERVIEW_MAX_LENGTH = 72
+BRIEFING_IMPACT_MAX_LENGTH = 72
+BRIEFING_WATCH_POINT_MAX_LENGTH = 28
 TICKER_KEYWORDS = {
     "NVDA": "엔비디아",
     "TSLA": "테슬라",
@@ -304,9 +304,10 @@ def _build_briefing_prompt(grouped_articles: dict[str, list[dict]], request: Rel
         f"투자성향: {risk_label}\n"
         f"목표: {goal_label}\n"
         f"관련 보유자산: {related_assets}\n"
-        "길이 제한: title 20자 이내, overview 90자 이내 완성문 1문장, "
-        "portfolioImpact 90자 이내 완성문 1문장, watchPoints 각 35자 이내.\n"
-        '응답 형식: {"title":"20자 이내 제목","overview":"90자 이내 핵심 이슈 한 문장.","portfolioImpact":"90자 이내 포트폴리오 영향 한 문장.","watchPoints":["35자 이내 확인점","35자 이내 확인점"],"relatedAssets":["자산명"]}\n\n'
+        "길이 제한: title 18자 이내, overview 65자 이내 완성문 1문장, "
+        "portfolioImpact 65자 이내 완성문 1문장, watchPoints 각 25자 이내.\n"
+        "말줄임표, 생략 표시, 중간에서 끊긴 표현은 절대 쓰지 마라.\n"
+        '응답 형식: {"title":"18자 이내 제목","overview":"65자 이내 핵심 이슈 한 문장.","portfolioImpact":"65자 이내 포트폴리오 영향 한 문장.","watchPoints":["25자 이내 확인점","25자 이내 확인점"],"relatedAssets":["자산명"]}\n\n'
         + "\n\n".join(sections)
     )
 
@@ -374,20 +375,13 @@ def _build_briefing_fallback(
     if not related_assets:
         return None, RelatedNewsDigestStatus(status="failed", reason=reason)
 
-    representative_article = next((articles[0] for articles in grouped_articles.values() if articles), None)
-    representative_text = _truncate_display_text(
-        (representative_article or {}).get("summary") or (representative_article or {}).get("title") or "",
-        70,
-    )
     asset_text = " · ".join(related_assets[:4])
     overview = f"{asset_text} 관련 뉴스가 포착됐습니다."
-    if representative_text:
-        overview = f"{overview} {representative_text}"
 
     briefing = RelatedNewsDigestBriefing(
         title="보유자산 뉴스 브리핑",
         overview=_fit_complete_sentence(overview, BRIEFING_OVERVIEW_MAX_LENGTH),
-        portfolioImpact="단일 기사 흐름만으로 방향성을 단정하기보다, 해당 자산의 실적·금리·환율 변화를 함께 확인하는 것이 좋습니다.",
+        portfolioImpact="단일 기사보다 실적·금리·환율 흐름을 함께 확인하는 것이 좋습니다.",
         watchPoints=_default_watch_points(),
         relatedAssets=related_assets[:6],
     )
@@ -450,7 +444,7 @@ def _fit_complete_sentence(value: str, max_length: int) -> str:
     if boundary >= max_length * 0.55:
         candidate = candidate[:boundary].rstrip()
 
-    return candidate.rstrip(" ,·-") + "..."
+    return _ensure_sentence_end(candidate.rstrip(" ,·-"))
 
 
 def _ensure_sentence_end(value: str) -> str:
