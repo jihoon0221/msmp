@@ -39,17 +39,32 @@ Deno.serve(async (request) => {
       return json({ error: "stock_id 또는 stock_ids가 필요합니다." }, 400);
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      {
-        global: {
-          headers: {
-            Authorization: request.headers.get("Authorization") ?? "",
-          },
+    const supabaseUrl = requireEnv("SUPABASE_URL");
+    const anonKey = requireEnv("SUPABASE_ANON_KEY");
+    const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const authorization = request.headers.get("Authorization");
+
+    if (!authorization) {
+      return json({ error: "인증 정보가 필요합니다." }, 401);
+    }
+
+    const authClient = createClient(supabaseUrl, anonKey, {
+      global: {
+        headers: {
+          Authorization: authorization,
         },
       },
-    );
+    });
+    const {
+      data: { user },
+      error: authError,
+    } = await authClient.auth.getUser();
+
+    if (authError || !user) {
+      return json({ error: "로그인 후 가격을 조회할 수 있습니다." }, 401);
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: stocks, error: stockError } = await supabase
       .from("stocks")
@@ -114,3 +129,10 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function requireEnv(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) {
+    throw new Error(`${name} 환경변수가 설정되지 않았습니다.`);
+  }
+  return value;
+}
