@@ -11,6 +11,7 @@ import type {
   FinancialInputs,
   PortfolioModel,
   RelatedNewsArticle,
+  RelatedNewsDigestBriefing,
   RelatedNewsDigestStatus,
   RelatedNewsDigestSummary,
 } from "../../types/domain";
@@ -31,17 +32,19 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const NEWS_SHORT_CACHE_TTL_MS = 10 * 60 * 1000;
-const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v9";
+const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v10";
 const NEWS_CANDIDATES_PER_CATEGORY = 1;
 
 type CachedNewsPayload = {
   articles: RelatedNewsArticle[];
+  digestBriefing: RelatedNewsDigestBriefing | null;
   digestStatus: RelatedNewsDigestStatus | null;
   digestSummary: RelatedNewsDigestSummary[];
 };
 
 export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoaded }: ExploreViewProps) {
   const [articles, setArticles] = useState<RelatedNewsArticle[]>([]);
+  const [digestBriefing, setDigestBriefing] = useState<RelatedNewsDigestBriefing | null>(null);
   const [digestStatus, setDigestStatus] = useState<RelatedNewsDigestStatus | null>(null);
   const [digestSummary, setDigestSummary] = useState<RelatedNewsDigestSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +74,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
       }),
     [assetNames, candidateQueries, inputs.goalType, inputs.riskProfile, tickers],
   );
-  const digestBadge = digestStatus?.status === "success" ? "Gemini" : digestSummary.length > 0 ? "기사 기반" : "Gemini";
+  const digestBadge = digestStatus?.status === "success" ? "Gemini" : digestBriefing || digestSummary.length > 0 ? "기사 기반" : "Gemini";
 
   useEffect(() => {
     let ignore = false;
@@ -85,6 +88,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
       setIsLoading(true);
       setError(null);
       setArticles([]);
+      setDigestBriefing(null);
       setDigestStatus(null);
       setDigestSummary([]);
 
@@ -93,6 +97,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         const cachedNews = canUseLocalCache ? readCachedNews(cacheKey) : null;
         if (cachedNews) {
           setArticles(cachedNews.articles);
+          setDigestBriefing(cachedNews.digestBriefing);
           setDigestStatus(cachedNews.digestStatus);
           setDigestSummary(cachedNews.digestSummary);
           setIsLoading(false);
@@ -108,11 +113,13 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         });
         if (ignore) return;
         setArticles(newsResponse.articles);
+        setDigestBriefing(newsResponse.digestBriefing ?? null);
         setDigestStatus(newsResponse.digestStatus ?? null);
         setDigestSummary(newsResponse.digestSummary ?? []);
-        if (newsResponse.articles.length > 0 || newsResponse.digestSummary?.length > 0) {
+        if (newsResponse.articles.length > 0 || newsResponse.digestBriefing || newsResponse.digestSummary?.length > 0) {
           writeCachedNews(cacheKey, {
             articles: newsResponse.articles,
+            digestBriefing: newsResponse.digestBriefing ?? null,
             digestStatus: newsResponse.digestStatus ?? null,
             digestSummary: newsResponse.digestSummary ?? [],
           });
@@ -121,6 +128,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         if (ignore) return;
         console.warn("Failed to load related news.", newsError);
         setArticles([]);
+        setDigestBriefing(null);
         setDigestStatus(null);
         setDigestSummary([]);
         setError(newsError instanceof Error ? newsError.message : NEWS_ERROR_MESSAGE);
@@ -160,13 +168,36 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
 
       <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-lg">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h3 className="text-xs font-extrabold">보유 종목 AI 요약</h3>
+          <h3 className="text-xs font-extrabold">보유자산 AI 브리핑</h3>
           <span className="rounded-full bg-white/10 px-2 py-0.5 text-[8px] font-bold text-blue-100">{digestBadge}</span>
         </div>
         {isLoading ? (
           <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
-            요약을 불러오는 중입니다.
+            브리핑을 불러오는 중입니다.
           </p>
+        ) : digestBriefing ? (
+          <div className="space-y-3">
+            <div className="rounded-xl bg-white/10 px-3 py-2.5">
+              <strong className="mb-1 block text-[11px] text-white">{digestBriefing.title}</strong>
+              <p className="text-[10px] leading-relaxed text-slate-300">{digestBriefing.overview}</p>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5">
+              <span className="mb-1 block text-[9px] font-extrabold text-blue-200">포트폴리오 영향</span>
+              <p className="text-[10px] leading-relaxed text-slate-300">{digestBriefing.portfolioImpact}</p>
+            </div>
+            {digestBriefing.watchPoints.length > 0 ? (
+              <ul className="space-y-1.5">
+                {digestBriefing.watchPoints.map((point) => (
+                  <li key={point} className="rounded-lg bg-white/10 px-3 py-1.5 text-[10px] leading-relaxed text-slate-300">
+                    {point}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {digestBriefing.relatedAssets.length > 0 ? (
+              <p className="text-[9px] font-semibold text-slate-400">관련 자산: {digestBriefing.relatedAssets.join(" · ")}</p>
+            ) : null}
+          </div>
         ) : digestSummary.length > 0 ? (
           <ul className="space-y-2">
             {digestSummary.map((item) => (
@@ -178,7 +209,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
           </ul>
         ) : (
           <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
-            {digestStatus?.reason ?? "요약할 보유 종목 뉴스가 없습니다."}
+            {digestStatus?.reason ?? "브리핑할 보유자산 뉴스가 없습니다."}
           </p>
         )}
       </div>
@@ -232,8 +263,9 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
 
     const parsed = JSON.parse(rawValue) as CachedNewsPayload & { cachedAt?: number };
     const parsedArticles = Array.isArray(parsed.articles) ? parsed.articles : [];
+    const parsedDigestBriefing = isDigestBriefing(parsed.digestBriefing) ? parsed.digestBriefing : null;
     const parsedDigestSummary = Array.isArray(parsed.digestSummary) ? parsed.digestSummary : [];
-    if (parsedArticles.length === 0 && parsedDigestSummary.length === 0) {
+    if (parsedArticles.length === 0 && !parsedDigestBriefing && parsedDigestSummary.length === 0) {
       localStorage.removeItem(cacheKey);
       return null;
     }
@@ -249,6 +281,7 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
 
     return {
       articles: parsedArticles,
+      digestBriefing: parsedDigestBriefing,
       digestStatus: parsed.digestStatus ?? null,
       digestSummary: parsedDigestSummary,
     };
@@ -256,6 +289,18 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
     localStorage.removeItem(cacheKey);
     return null;
   }
+}
+
+function isDigestBriefing(value: unknown): value is RelatedNewsDigestBriefing {
+  if (!value || typeof value !== "object") return false;
+  const briefing = value as Partial<RelatedNewsDigestBriefing>;
+  return (
+    typeof briefing.title === "string" &&
+    typeof briefing.overview === "string" &&
+    typeof briefing.portfolioImpact === "string" &&
+    Array.isArray(briefing.watchPoints) &&
+    Array.isArray(briefing.relatedAssets)
+  );
 }
 
 function writeCachedNews(cacheKey: string, payload: CachedNewsPayload) {

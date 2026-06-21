@@ -114,13 +114,22 @@ class RelatedNewsDigestStatus(BaseModel):
     reason: str | None = None
 
 
+class RelatedNewsDigestBriefing(BaseModel):
+    title: str
+    overview: str
+    portfolioImpact: str
+    watchPoints: list[str] = Field(default_factory=list)
+    relatedAssets: list[str] = Field(default_factory=list)
+
+
 class RelatedNewsResponse(BaseModel):
     articles: list[RelatedNewsArticle]
     digestSummary: list[dict] = Field(default_factory=list)
+    digestBriefing: RelatedNewsDigestBriefing | None = None
     digestStatus: RelatedNewsDigestStatus = Field(
         default_factory=lambda: RelatedNewsDigestStatus(
             status="skipped",
-            reason="AI 요약을 아직 요청하지 않았습니다.",
+            reason="AI 브리핑을 아직 요청하지 않았습니다.",
         )
     )
 

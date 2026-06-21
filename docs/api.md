@@ -49,7 +49,7 @@
 | Frankfurter API Key | 필요 없음 | 공개 endpoint라 계속 동작 |
 | `TWELVE_DATA_API_KEY` 또는 `EODHD_API_KEY` | mock 가격을 실제 시장 가격으로 바꾸는 시점 | 필요 없음. mock 가격으로 계속 동작 |
 | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | FastAPI 뉴스 탭에서 실제 네이버 뉴스 조회를 테스트할 때 | 뉴스 탭에 실패 메시지 표시 |
-| `GEMINI_API_KEY` | FastAPI 뉴스 탭에서 보유 종목 AI 요약을 테스트할 때 | 기사 목록은 표시되고 AI 요약 카드만 비어 있음 |
+| `GEMINI_API_KEY` | FastAPI 뉴스 탭에서 보유자산 AI 브리핑을 테스트할 때 | 기사 목록은 표시되고 AI 브리핑 카드만 비어 있음 |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | 배포된 FastAPI가 Supabase access token을 Auth 서버로 검증할 때 | FastAPI 보호 endpoint가 `503` 반환 |
 | `SUPABASE_JWT_SECRET` | HS256 legacy JWT를 FastAPI가 직접 검증할 때 | 비대칭 JWT 검증에는 사용하지 않음 |
 | `API_ALLOWED_ORIGINS` | 로컬/배포 프론트에서 배포된 FastAPI를 호출할 때 | 브라우저 CORS 차단 |
@@ -488,7 +488,8 @@ type RelatedNewsRequest = {
 ```ts
 type RelatedNewsResponse = {
   articles: RelatedNewsArticle[];
-  digestSummary: RelatedNewsDigestSummary[];
+  digestBriefing: RelatedNewsDigestBriefing | null;
+  digestSummary: RelatedNewsDigestSummary[]; // legacy fallback
   digestStatus: RelatedNewsDigestStatus;
 };
 
@@ -504,6 +505,14 @@ type RelatedNewsArticle = {
   fetchedAt: string;
 };
 
+type RelatedNewsDigestBriefing = {
+  title: string;
+  overview: string;
+  portfolioImpact: string;
+  watchPoints: string[];
+  relatedAssets: string[];
+};
+
 type RelatedNewsDigestSummary = {
   ticker: string;
   summary: string;
@@ -514,6 +523,9 @@ type RelatedNewsDigestStatus = {
   reason: string | null;
 };
 ```
+
+`digestBriefing`은 보유 종목을 각각 요약하지 않고, 관련 뉴스 전체를 사용해 보유자산 관점의 단일 브리핑을 반환한다. Gemini 요청은 뉴스 요청 조합별 2시간 FastAPI 캐시를 사용한다.
+`digestSummary`는 구버전 프론트 호환용 필드이며 신규 화면은 `digestBriefing`을 우선 사용한다.
 
 ### 프론트 키워드 생성
 

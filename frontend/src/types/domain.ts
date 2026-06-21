@@ -71,6 +71,14 @@ export type RelatedNewsDigestSummary = {
   summary: string;
 };
 
+export type RelatedNewsDigestBriefing = {
+  title: string;
+  overview: string;
+  portfolioImpact: string;
+  watchPoints: string[];
+  relatedAssets: string[];
+};
+
 export type RelatedNewsDigestStatus = {
   status: "success" | "skipped" | "failed";
   reason: string | null;

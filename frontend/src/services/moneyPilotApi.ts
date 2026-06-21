@@ -5,6 +5,7 @@ import type {
   PortfolioAllocation,
   PortfolioModel,
   RelatedNewsArticle,
+  RelatedNewsDigestBriefing,
   RelatedNewsDigestStatus,
   RelatedNewsDigestSummary,
 } from "../types/domain";
@@ -32,6 +33,7 @@ type PortfolioRecommendationResponse = {
 type RelatedNewsResponse = {
   articles: RelatedNewsArticle[];
   digestSummary: RelatedNewsDigestSummary[];
+  digestBriefing: RelatedNewsDigestBriefing | null;
   digestStatus: RelatedNewsDigestStatus;
 };
 

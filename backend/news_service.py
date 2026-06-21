@@ -8,7 +8,13 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import requests
-from schemas import RelatedNewsArticle, RelatedNewsDigestStatus, RelatedNewsRequest, RelatedNewsResponse
+from schemas import (
+    RelatedNewsArticle,
+    RelatedNewsDigestBriefing,
+    RelatedNewsDigestStatus,
+    RelatedNewsRequest,
+    RelatedNewsResponse,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -17,17 +23,16 @@ GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/
 RELATED_NEWS_CACHE_TTL_SECONDS = 2 * 60 * 60
 RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS = 10 * 60
 RELATED_NEWS_CACHE_MAX_ENTRIES = 64
-RELATED_NEWS_CACHE_VERSION = 5
+RELATED_NEWS_CACHE_VERSION = 6
 NEWS_MAX_HOLDING_TICKERS = 4
 NEWS_MAX_HOLDING_NAMES = 4
 NEWS_MAX_CANDIDATE_QUERIES = 3
 GEMINI_DIGEST_TIMEOUT_SECONDS = 15
-GEMINI_DIGEST_MAX_OUTPUT_TOKENS = 512
+GEMINI_DIGEST_MAX_OUTPUT_TOKENS = 640
 DIGEST_MAX_GROUPS = 8
 DIGEST_MAX_ARTICLES_PER_GROUP = 1
 DIGEST_TITLE_MAX_LENGTH = 100
 DIGEST_SUMMARY_MAX_LENGTH = 140
-FALLBACK_DIGEST_MAX_LENGTH = 24
 TICKER_KEYWORDS = {
     "NVDA": "엔비디아",
     "TSLA": "테슬라",
@@ -120,7 +125,7 @@ def get_related_news_v1(request: RelatedNewsRequest) -> RelatedNewsResponse:
         for article in legacy_article_items
         if article.get("ticker") in holding_keywords
     ]
-    digest_summary, digest_status = generate_news_digest(holding_articles)
+    digest_briefing, digest_status = generate_news_briefing(holding_articles, request)
 
     articles = [
         RelatedNewsArticle(
@@ -137,38 +142,41 @@ def get_related_news_v1(request: RelatedNewsRequest) -> RelatedNewsResponse:
         for article in legacy_article_items
     ]
 
-    response = RelatedNewsResponse(articles=articles, digestSummary=digest_summary, digestStatus=digest_status)
+    response = RelatedNewsResponse(
+        articles=articles,
+        digestSummary=[],
+        digestBriefing=digest_briefing,
+        digestStatus=digest_status,
+    )
     _write_related_news_cache(cache_key, response)
     return response
 
 
-def generate_news_digest(articles: list[dict]) -> tuple[list[dict], RelatedNewsDigestStatus]:
+def generate_news_briefing(
+    articles: list[dict],
+    request: RelatedNewsRequest,
+) -> tuple[RelatedNewsDigestBriefing | None, RelatedNewsDigestStatus]:
     api_key = os.getenv("GEMINI_API_KEY")
     if not articles:
-        return [], RelatedNewsDigestStatus(
+        return None, RelatedNewsDigestStatus(
             status="skipped",
             reason="보유 종목과 직접 매칭된 뉴스가 없습니다.",
         )
     if not api_key:
-        return [], RelatedNewsDigestStatus(
+        return None, RelatedNewsDigestStatus(
             status="skipped",
             reason="GEMINI_API_KEY가 설정되지 않았습니다.",
         )
 
-    grouped_articles: dict[str, list[dict]] = {}
-    for article in articles:
-        ticker = (article.get("ticker") or "").strip()
-        if not ticker:
-            continue
-        grouped_articles.setdefault(ticker, []).append(article)
+    grouped_articles = _group_digest_articles(articles)
 
     if not grouped_articles:
-        return [], RelatedNewsDigestStatus(
+        return None, RelatedNewsDigestStatus(
             status="skipped",
             reason="요약할 종목별 뉴스 그룹을 만들 수 없습니다.",
         )
 
-    prompt = _build_digest_prompt(grouped_articles)
+    prompt = _build_briefing_prompt(grouped_articles, request)
 
     try:
         response = requests.post(
@@ -190,56 +198,59 @@ def generate_news_digest(articles: list[dict]) -> tuple[list[dict], RelatedNewsD
             timeout=GEMINI_DIGEST_TIMEOUT_SECONDS,
         )
         if not response.ok:
-            return [], RelatedNewsDigestStatus(
+            return None, RelatedNewsDigestStatus(
                 status="failed",
                 reason=_format_gemini_http_error(response),
             )
 
         data = response.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"]
-        digest_summary = _parse_digest_summary(text)
+        briefing = _parse_digest_briefing(text, grouped_articles)
 
-        if not digest_summary:
-            return _build_digest_fallback(
+        if not briefing:
+            return _build_briefing_fallback(
                 grouped_articles,
-                "Gemini 응답에서 유효한 요약을 찾지 못해 기사 제목 기반 요약을 표시합니다.",
+                "Gemini 응답에서 유효한 브리핑을 찾지 못해 기사 기반 브리핑을 표시합니다.",
             )
 
-        completed_summary, missing_count = _complete_digest_summary(digest_summary, grouped_articles)
-        if missing_count > 0:
-            return completed_summary, RelatedNewsDigestStatus(
-                status="skipped",
-                reason="Gemini가 일부 종목 요약을 누락해 기사 기반 요약을 함께 표시합니다.",
-            )
-
-        return completed_summary, RelatedNewsDigestStatus(status="success")
+        return briefing, RelatedNewsDigestStatus(status="success")
     except requests.Timeout as exc:
         logger.warning("Gemini digest generation timed out", exc_info=True)
-        return _build_digest_fallback(
+        return _build_briefing_fallback(
             grouped_articles,
-            "Gemini 요청 시간이 초과되어 기사 제목 기반 요약을 표시합니다.",
+            "Gemini 요청 시간이 초과되어 기사 기반 브리핑을 표시합니다.",
         )
     except requests.RequestException as exc:
         logger.warning("Gemini digest generation request failed", exc_info=True)
-        return [], RelatedNewsDigestStatus(
+        return None, RelatedNewsDigestStatus(
             status="failed",
             reason=f"Gemini API 연결에 실패했습니다. ({type(exc).__name__})",
         )
     except json.JSONDecodeError as exc:
         logger.warning("Gemini digest response was not valid JSON", exc_info=True)
-        return _build_digest_fallback(
+        return _build_briefing_fallback(
             grouped_articles,
-            "Gemini 응답이 JSON 형식이 아니어서 기사 제목 기반 요약을 표시합니다.",
+            "Gemini 응답이 JSON 형식이 아니어서 기사 기반 브리핑을 표시합니다.",
         )
     except (KeyError, TypeError, ValueError) as exc:
         logger.warning("Gemini digest response shape was unexpected", exc_info=True)
-        return _build_digest_fallback(
+        return _build_briefing_fallback(
             grouped_articles,
-            f"Gemini 응답 구조가 예상과 달라 기사 제목 기반 요약을 표시합니다. ({type(exc).__name__})",
+            f"Gemini 응답 구조가 예상과 달라 기사 기반 브리핑을 표시합니다. ({type(exc).__name__})",
         )
 
 
-def _build_digest_prompt(grouped_articles: dict[str, list[dict]]) -> str:
+def _group_digest_articles(articles: list[dict]) -> dict[str, list[dict]]:
+    grouped_articles: dict[str, list[dict]] = {}
+    for article in articles:
+        ticker = (article.get("ticker") or "").strip()
+        if not ticker:
+            continue
+        grouped_articles.setdefault(ticker, []).append(article)
+    return grouped_articles
+
+
+def _build_briefing_prompt(grouped_articles: dict[str, list[dict]], request: RelatedNewsRequest) -> str:
     sections = []
     for ticker, articles in list(grouped_articles.items())[:DIGEST_MAX_GROUPS]:
         article_lines = []
@@ -249,11 +260,29 @@ def _build_digest_prompt(grouped_articles: dict[str, list[dict]]) -> str:
             article_lines.append(f"- 제목: {title}\n  요약: {summary}")
         sections.append(f"종목: {ticker}\n" + "\n".join(article_lines))
 
+    risk_label = {
+        "stable": "안정형",
+        "neutral": "중립형",
+        "aggressive": "공격형",
+    }.get(request.riskProfile.value if request.riskProfile else "", "미지정")
+    goal_label = {
+        "jeonse": "전세자금",
+        "seed": "목돈 마련",
+        "car": "자동차 구매",
+        "wedding": "결혼자금",
+        "other": "사용자 지정 목표",
+    }.get(request.goalType.value if request.goalType else "", "미지정")
+    related_assets = ", ".join(list(grouped_articles)[:DIGEST_MAX_GROUPS])
+
     return (
-        "아래 뉴스들을 종목별로 요약해라.\n"
-        "각 종목당 20자 이내 한국어 한 줄 요약을 JSON 배열로만 응답해라.\n"
-        "설명, 마크다운 코드블록은 포함하지 마라.\n"
-        '응답 형식: [{"ticker": "삼성전자", "summary": "..."}]\n\n'
+        "아래 뉴스들을 종목별로 따로 요약하지 말고, 사용자의 보유자산 전체 관점에서 PB 브리핑을 작성해라.\n"
+        "투자 매수/매도 지시처럼 단정하지 말고, 뉴스가 포트폴리오에 줄 수 있는 영향과 확인할 점을 설명해라.\n"
+        "한국어로 자연스럽고 간결하게 작성하라.\n"
+        "마크다운 없이 JSON 객체만 응답해라.\n"
+        f"투자성향: {risk_label}\n"
+        f"목표: {goal_label}\n"
+        f"관련 보유자산: {related_assets}\n"
+        '응답 형식: {"title":"20자 이내 제목","overview":"80~140자 핵심 이슈","portfolioImpact":"80~140자 포트폴리오 영향","watchPoints":["40자 이내 확인점 1","40자 이내 확인점 2"],"relatedAssets":["자산명"]}\n\n'
         + "\n\n".join(sections)
     )
 
@@ -265,72 +294,109 @@ def _truncate_prompt_text(value: str, max_length: int) -> str:
     return normalized[:max_length].rstrip() + "..."
 
 
-def _build_digest_fallback(
+def _parse_digest_briefing(
+    value: str,
+    grouped_articles: dict[str, list[dict]],
+) -> RelatedNewsDigestBriefing | None:
+    parsed = _parse_gemini_json(value)
+    if not isinstance(parsed, dict):
+        return None
+
+    related_assets = _normalize_briefing_string_list(
+        parsed.get("relatedAssets") or parsed.get("related_assets") or parsed.get("assets"),
+        fallback=list(grouped_articles)[:DIGEST_MAX_GROUPS],
+        max_items=6,
+        max_length=24,
+    )
+    watch_points = _normalize_briefing_string_list(
+        parsed.get("watchPoints") or parsed.get("watch_points") or parsed.get("risks") or parsed.get("확인점"),
+        fallback=[],
+        max_items=3,
+        max_length=60,
+    )
+    title = _truncate_display_text(
+        str(parsed.get("title") or parsed.get("headline") or "보유자산 뉴스 브리핑"),
+        28,
+    )
+    overview = _truncate_display_text(
+        str(parsed.get("overview") or parsed.get("summary") or parsed.get("핵심") or ""),
+        180,
+    )
+    portfolio_impact = _truncate_display_text(
+        str(parsed.get("portfolioImpact") or parsed.get("portfolio_impact") or parsed.get("impact") or parsed.get("영향") or ""),
+        180,
+    )
+
+    if not overview or not portfolio_impact:
+        return None
+
+    if not watch_points:
+        watch_points = _default_watch_points()
+
+    return RelatedNewsDigestBriefing(
+        title=title,
+        overview=overview,
+        portfolioImpact=portfolio_impact,
+        watchPoints=watch_points,
+        relatedAssets=related_assets,
+    )
+
+
+def _build_briefing_fallback(
     grouped_articles: dict[str, list[dict]],
     reason: str,
-) -> tuple[list[dict], RelatedNewsDigestStatus]:
-    digest_summary = []
+) -> tuple[RelatedNewsDigestBriefing | None, RelatedNewsDigestStatus]:
+    related_assets = list(grouped_articles)[:DIGEST_MAX_GROUPS]
+    if not related_assets:
+        return None, RelatedNewsDigestStatus(status="failed", reason=reason)
 
-    for ticker, articles in list(grouped_articles.items())[:DIGEST_MAX_GROUPS]:
-        if not articles:
-            continue
-        summary = _build_fallback_digest_text(articles[0])
-        if summary:
-            digest_summary.append({"ticker": ticker, "summary": summary})
-
-    if digest_summary:
-        return digest_summary, RelatedNewsDigestStatus(status="skipped", reason=reason)
-
-    return [], RelatedNewsDigestStatus(status="failed", reason=reason)
-
-
-def _complete_digest_summary(
-    digest_summary: list[dict],
-    grouped_articles: dict[str, list[dict]],
-) -> tuple[list[dict], int]:
-    target_groups = list(grouped_articles.items())[:DIGEST_MAX_GROUPS]
-    target_tickers = {ticker for ticker, _articles in target_groups}
-    target_by_key = {_normalize_digest_key(ticker): ticker for ticker in target_tickers}
-    completed_summary = []
-    seen_keys = set()
-
-    for item in digest_summary:
-        ticker = str(item.get("ticker") or "").strip()
-        summary = str(item.get("summary") or "").strip()
-        ticker_key = _normalize_digest_key(ticker)
-        if not ticker_key or not summary or ticker_key not in target_by_key or ticker_key in seen_keys:
-            continue
-
-        seen_keys.add(ticker_key)
-        completed_summary.append({
-            "ticker": target_by_key[ticker_key],
-            "summary": summary[:60],
-        })
-
-    missing_count = 0
-    for ticker, articles in target_groups:
-        ticker_key = _normalize_digest_key(ticker)
-        if ticker_key in seen_keys:
-            continue
-
-        summary = _build_fallback_digest_text(articles[0]) if articles else ""
-        if summary:
-            missing_count += 1
-            completed_summary.append({"ticker": ticker, "summary": summary})
-
-    return completed_summary, missing_count
-
-
-def _normalize_digest_key(value: str) -> str:
-    return re.sub(r"\s+", "", value).casefold()
-
-
-def _build_fallback_digest_text(article: dict) -> str:
-    text = _truncate_display_text(
-        article.get("summary") or article.get("title") or "",
-        FALLBACK_DIGEST_MAX_LENGTH,
+    representative_article = next((articles[0] for articles in grouped_articles.values() if articles), None)
+    representative_text = _truncate_display_text(
+        (representative_article or {}).get("summary") or (representative_article or {}).get("title") or "",
+        120,
     )
-    return text or "관련 기사 확인 필요"
+    asset_text = " · ".join(related_assets[:4])
+    overview = f"{asset_text} 관련 뉴스가 포착됐습니다."
+    if representative_text:
+        overview = f"{overview} {representative_text}"
+
+    briefing = RelatedNewsDigestBriefing(
+        title="보유자산 뉴스 브리핑",
+        overview=_truncate_display_text(overview, 180),
+        portfolioImpact="단일 기사 흐름만으로 방향성을 단정하기보다, 해당 자산의 실적·금리·환율 변화를 함께 확인하는 것이 좋습니다.",
+        watchPoints=_default_watch_points(),
+        relatedAssets=related_assets[:6],
+    )
+    return briefing, RelatedNewsDigestStatus(status="skipped", reason=reason)
+
+
+def _normalize_briefing_string_list(value, fallback: list[str], max_items: int, max_length: int) -> list[str]:
+    if isinstance(value, list):
+        candidates = value
+    elif isinstance(value, str):
+        candidates = re.split(r"[,·/]", value)
+    else:
+        candidates = fallback
+
+    normalized = []
+    seen = set()
+    for item in candidates:
+        text = _truncate_display_text(str(item), max_length)
+        key = text.casefold()
+        if text and key not in seen:
+            seen.add(key)
+            normalized.append(text)
+        if len(normalized) >= max_items:
+            break
+
+    return normalized
+
+
+def _default_watch_points() -> list[str]:
+    return [
+        "단기 뉴스보다 실적 흐름 확인",
+        "금리와 환율 변화 함께 점검",
+    ]
 
 
 def _truncate_display_text(value: str, max_length: int) -> str:
@@ -353,22 +419,6 @@ def _clean_display_text(value: str) -> str:
     return text.strip(" -·,")
 
 
-def _parse_digest_summary(value: str) -> list[dict]:
-    parsed = _parse_gemini_json(value)
-    items = _normalize_digest_items(parsed)
-    digest_summary = []
-
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        ticker = str(item.get("ticker") or item.get("symbol") or item.get("name") or "").strip()
-        summary = str(item.get("summary") or item.get("text") or item.get("headline") or item.get("요약") or "").strip()
-        if ticker and summary:
-            digest_summary.append({"ticker": ticker, "summary": summary[:60]})
-
-    return digest_summary
-
-
 def _parse_gemini_json(value: str):
     text = _strip_json_fence(value)
     try:
@@ -381,27 +431,6 @@ def _parse_gemini_json(value: str):
         return json.loads(extracted)
 
     raise json.JSONDecodeError("No JSON object or array found", text, 0)
-
-
-def _normalize_digest_items(parsed) -> list:
-    if isinstance(parsed, list):
-        return parsed
-
-    if isinstance(parsed, dict):
-        has_single_ticker = any(key in parsed for key in ["ticker", "symbol", "name"])
-        has_single_summary = any(key in parsed for key in ["summary", "text", "headline", "요약"])
-        if has_single_ticker and has_single_summary:
-            return [parsed]
-
-        for key in ["items", "summaries", "digestSummary", "data", "result"]:
-            value = parsed.get(key)
-            if isinstance(value, list):
-                return value
-
-        if all(isinstance(value, str) for value in parsed.values()):
-            return [{"ticker": key, "summary": value} for key, value in parsed.items()]
-
-    return []
 
 
 def _extract_json_fragment(value: str) -> str | None:
