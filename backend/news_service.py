@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import requests
 from config import is_env_set
-from schemas import RelatedNewsArticle, RelatedNewsRequest, RelatedNewsResponse
+from schemas import RelatedNewsArticle, RelatedNewsDigestStatus, RelatedNewsRequest, RelatedNewsResponse
 
 
 NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json"
@@ -84,7 +84,13 @@ def get_related_news(tickers, display=1):
 def get_related_news_v1(request: RelatedNewsRequest) -> RelatedNewsResponse:
     keywords = _build_news_keywords(request)
     if not keywords:
-        return RelatedNewsResponse(articles=[])
+        return RelatedNewsResponse(
+            articles=[],
+            digestStatus=RelatedNewsDigestStatus(
+                status="skipped",
+                reason="뉴스 검색 키워드가 없습니다.",
+            ),
+        )
 
     legacy_articles = get_related_news(keywords, display=request.limitPerKeyword)
     fetched_at = datetime.now(UTC).isoformat()
@@ -95,7 +101,7 @@ def get_related_news_v1(request: RelatedNewsRequest) -> RelatedNewsResponse:
         for article in legacy_article_items
         if article.get("ticker") in holding_keywords
     ]
-    digest_summary = generate_news_digest(holding_articles) if holding_articles else []
+    digest_summary, digest_status = generate_news_digest(holding_articles)
 
     articles = [
         RelatedNewsArticle(
@@ -112,13 +118,21 @@ def get_related_news_v1(request: RelatedNewsRequest) -> RelatedNewsResponse:
         for article in legacy_article_items
     ]
 
-    return RelatedNewsResponse(articles=articles, digestSummary=digest_summary)
+    return RelatedNewsResponse(articles=articles, digestSummary=digest_summary, digestStatus=digest_status)
 
 
-def generate_news_digest(articles: list[dict]) -> list[dict]:
+def generate_news_digest(articles: list[dict]) -> tuple[list[dict], RelatedNewsDigestStatus]:
     api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or not articles:
-        return []
+    if not articles:
+        return [], RelatedNewsDigestStatus(
+            status="skipped",
+            reason="보유 종목과 직접 매칭된 뉴스가 없습니다.",
+        )
+    if not api_key:
+        return [], RelatedNewsDigestStatus(
+            status="skipped",
+            reason="GEMINI_API_KEY가 설정되지 않았습니다.",
+        )
 
     grouped_articles: dict[str, list[dict]] = {}
     for article in articles:
@@ -128,7 +142,10 @@ def generate_news_digest(articles: list[dict]) -> list[dict]:
         grouped_articles.setdefault(ticker, []).append(article)
 
     if not grouped_articles:
-        return []
+        return [], RelatedNewsDigestStatus(
+            status="skipped",
+            reason="요약할 종목별 뉴스 그룹을 만들 수 없습니다.",
+        )
 
     prompt = _build_digest_prompt(grouped_articles)
 
@@ -156,7 +173,10 @@ def generate_news_digest(articles: list[dict]) -> list[dict]:
         parsed = json.loads(_strip_json_fence(text))
 
         if not isinstance(parsed, list):
-            return []
+            return [], RelatedNewsDigestStatus(
+                status="failed",
+                reason="Gemini 응답 형식이 올바르지 않습니다.",
+            )
 
         digest_summary = []
         for item in parsed:
@@ -167,10 +187,19 @@ def generate_news_digest(articles: list[dict]) -> list[dict]:
             if ticker and summary:
                 digest_summary.append({"ticker": ticker, "summary": summary})
 
-        return digest_summary
+        if not digest_summary:
+            return [], RelatedNewsDigestStatus(
+                status="failed",
+                reason="Gemini 응답에서 유효한 요약을 찾지 못했습니다.",
+            )
+
+        return digest_summary, RelatedNewsDigestStatus(status="success")
     except (KeyError, TypeError, ValueError, requests.RequestException) as exc:
         print(f"Gemini digest generation failed: {exc}", flush=True)
-        return []
+        return [], RelatedNewsDigestStatus(
+            status="failed",
+            reason="Gemini 요약 생성 요청에 실패했습니다.",
+        )
 
 
 def _build_digest_prompt(grouped_articles: dict[str, list[dict]]) -> str:

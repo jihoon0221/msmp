@@ -71,6 +71,11 @@ export type RelatedNewsDigestSummary = {
   summary: string;
 };
 
+export type RelatedNewsDigestStatus = {
+  status: "success" | "skipped" | "failed";
+  reason: string | null;
+};
+
 export type StockAssetFilter = "all" | "kr_stock" | "us_stock" | "kr_etf" | "us_etf";
 
 export type Stock = {

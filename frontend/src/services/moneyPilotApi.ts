@@ -5,6 +5,7 @@ import type {
   PortfolioAllocation,
   PortfolioModel,
   RelatedNewsArticle,
+  RelatedNewsDigestStatus,
   RelatedNewsDigestSummary,
 } from "../types/domain";
 
@@ -30,6 +31,7 @@ type PortfolioRecommendationResponse = {
 type RelatedNewsResponse = {
   articles: RelatedNewsArticle[];
   digestSummary: RelatedNewsDigestSummary[];
+  digestStatus: RelatedNewsDigestStatus;
 };
 
 export class MoneyPilotApiError extends Error {

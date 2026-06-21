@@ -476,6 +476,7 @@ type RelatedNewsRequest = {
 type RelatedNewsResponse = {
   articles: RelatedNewsArticle[];
   digestSummary: RelatedNewsDigestSummary[];
+  digestStatus: RelatedNewsDigestStatus;
 };
 
 type RelatedNewsArticle = {
@@ -493,6 +494,11 @@ type RelatedNewsArticle = {
 type RelatedNewsDigestSummary = {
   ticker: string;
   summary: string;
+};
+
+type RelatedNewsDigestStatus = {
+  status: "success" | "skipped" | "failed";
+  reason: string | null;
 };
 ```
 

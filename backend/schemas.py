@@ -109,9 +109,20 @@ class RelatedNewsArticle(BaseModel):
     fetchedAt: str
 
 
+class RelatedNewsDigestStatus(BaseModel):
+    status: Literal["success", "skipped", "failed"]
+    reason: str | None = None
+
+
 class RelatedNewsResponse(BaseModel):
     articles: list[RelatedNewsArticle]
     digestSummary: list[dict] = Field(default_factory=list)
+    digestStatus: RelatedNewsDigestStatus = Field(
+        default_factory=lambda: RelatedNewsDigestStatus(
+            status="skipped",
+            reason="AI 요약을 아직 요청하지 않았습니다.",
+        )
+    )
 
 
 class ValuationStock(BaseModel):

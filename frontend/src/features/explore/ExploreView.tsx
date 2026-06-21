@@ -11,6 +11,7 @@ import type {
   FinancialInputs,
   PortfolioModel,
   RelatedNewsArticle,
+  RelatedNewsDigestStatus,
   RelatedNewsDigestSummary,
 } from "../../types/domain";
 
@@ -29,15 +30,17 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
-const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v2";
+const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v3";
 
 type CachedNewsPayload = {
   articles: RelatedNewsArticle[];
+  digestStatus: RelatedNewsDigestStatus | null;
   digestSummary: RelatedNewsDigestSummary[];
 };
 
 export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoaded }: ExploreViewProps) {
   const [articles, setArticles] = useState<RelatedNewsArticle[]>([]);
+  const [digestStatus, setDigestStatus] = useState<RelatedNewsDigestStatus | null>(null);
   const [digestSummary, setDigestSummary] = useState<RelatedNewsDigestSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +79,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         const cachedNews = refreshCount === 0 ? readCachedNews(cacheKey) : null;
         if (cachedNews) {
           setArticles(cachedNews.articles);
+          setDigestStatus(cachedNews.digestStatus);
           setDigestSummary(cachedNews.digestSummary);
           setIsLoading(false);
           return;
@@ -90,14 +94,17 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         });
         if (ignore) return;
         setArticles(newsResponse.articles);
+        setDigestStatus(newsResponse.digestStatus ?? null);
         setDigestSummary(newsResponse.digestSummary ?? []);
         writeCachedNews(cacheKey, {
           articles: newsResponse.articles,
+          digestStatus: newsResponse.digestStatus ?? null,
           digestSummary: newsResponse.digestSummary ?? [],
         });
       } catch {
         if (ignore) return;
         setArticles([]);
+        setDigestStatus(null);
         setDigestSummary([]);
         setError(NEWS_ERROR_MESSAGE);
       } finally {
@@ -154,7 +161,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
           </ul>
         ) : (
           <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
-            요약할 보유 종목 뉴스가 없습니다.
+            {digestStatus?.reason ?? "요약할 보유 종목 뉴스가 없습니다."}
           </p>
         )}
       </div>
@@ -214,6 +221,7 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
 
     return {
       articles: Array.isArray(parsed.articles) ? parsed.articles : [],
+      digestStatus: parsed.digestStatus ?? null,
       digestSummary: Array.isArray(parsed.digestSummary) ? parsed.digestSummary : [],
     };
   } catch {
