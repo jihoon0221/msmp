@@ -7,6 +7,7 @@ import os
 import time
 from dataclasses import dataclass
 
+import requests
 from fastapi import HTTPException, Request, status
 
 
@@ -44,6 +45,26 @@ def _get_bearer_token(request: Request) -> str:
 
 
 def _verify_supabase_jwt(token: str) -> dict:
+    try:
+        header_segment, payload_segment, signature_segment = token.split(".")
+        header = _decode_json_segment(header_segment)
+        payload = _decode_json_segment(payload_segment)
+    except (ValueError, json.JSONDecodeError, binascii.Error, UnicodeDecodeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="토큰 형식이 올바르지 않습니다.",
+        ) from None
+
+    if header.get("alg") == "HS256" and os.getenv("SUPABASE_JWT_SECRET"):
+        _verify_hs256_signature(header_segment, payload_segment, signature_segment)
+    else:
+        _verify_with_supabase_auth_server(token)
+
+    _validate_standard_claims(payload)
+    return payload
+
+
+def _verify_hs256_signature(header_segment: str, payload_segment: str, signature_segment: str) -> None:
     secret = os.getenv("SUPABASE_JWT_SECRET")
     if not secret:
         raise HTTPException(
@@ -52,21 +73,12 @@ def _verify_supabase_jwt(token: str) -> dict:
         )
 
     try:
-        header_segment, payload_segment, signature_segment = token.split(".")
-        header = _decode_json_segment(header_segment)
-        payload = _decode_json_segment(payload_segment)
         signature = _decode_segment(signature_segment)
-    except (ValueError, json.JSONDecodeError, binascii.Error, UnicodeDecodeError):
+    except binascii.Error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="토큰 형식이 올바르지 않습니다.",
         ) from None
-
-    if header.get("alg") != "HS256":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="지원하지 않는 토큰 서명 방식입니다.",
-        )
 
     signed_value = f"{header_segment}.{payload_segment}".encode()
     expected_signature = hmac.new(secret.encode(), signed_value, hashlib.sha256).digest()
@@ -76,6 +88,39 @@ def _verify_supabase_jwt(token: str) -> dict:
             detail="토큰 서명이 올바르지 않습니다.",
         )
 
+
+def _verify_with_supabase_auth_server(token: str) -> None:
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+    if not supabase_url or not publishable_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SUPABASE_URL과 SUPABASE_PUBLISHABLE_KEY가 필요합니다.",
+        )
+
+    try:
+        response = requests.get(
+            f"{supabase_url}/auth/v1/user",
+            headers={
+                "apikey": publishable_key,
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=5,
+        )
+    except requests.RequestException:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase Auth 서버에서 토큰을 확인하지 못했습니다.",
+        ) from None
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Supabase Auth 토큰 검증에 실패했습니다.",
+        )
+
+
+def _validate_standard_claims(payload: dict) -> None:
     now = int(time.time())
     expires_at = _read_timestamp(payload, "exp")
     not_before = _read_optional_timestamp(payload, "nbf")
@@ -96,8 +141,6 @@ def _verify_supabase_jwt(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="토큰 audience가 올바르지 않습니다.",
         )
-
-    return payload
 
 
 def _decode_json_segment(segment: str) -> dict:

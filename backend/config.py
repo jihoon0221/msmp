@@ -21,10 +21,13 @@ def get_allowed_origins() -> list[str]:
 
 
 def get_backend_service_status() -> dict[str, bool]:
+    has_supabase_auth_config = is_env_set("SUPABASE_URL") and (
+        is_env_set("SUPABASE_PUBLISHABLE_KEY") or is_env_set("SUPABASE_ANON_KEY")
+    )
     return {
         "portfolioRecommendation": True,
         "assetValuation": True,
-        "authGuard": is_env_set("SUPABASE_JWT_SECRET"),
+        "authGuard": is_env_set("SUPABASE_JWT_SECRET") or has_supabase_auth_config,
         "naverNews": is_env_set("NAVER_CLIENT_ID") and is_env_set("NAVER_CLIENT_SECRET"),
         "geminiDigest": is_env_set("GEMINI_API_KEY"),
     }

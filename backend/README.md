@@ -49,11 +49,14 @@ supabase/functions/get-exchange-rate/ USD/KRW exchange-rate cache boundary
 NAVER_CLIENT_ID=
 NAVER_CLIENT_SECRET=
 GEMINI_API_KEY=
+SUPABASE_URL=
+SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_JWT_SECRET=
 API_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
-`SUPABASE_JWT_SECRET`은 Supabase Dashboard의 JWT secret과 같은 값입니다. FastAPI가 배포되어 있어도 이 값은 서버 환경변수에만 둡니다.
+`SUPABASE_URL`은 Supabase project URL, `SUPABASE_PUBLISHABLE_KEY`는 프론트의 `VITE_SUPABASE_ANON_KEY`와 같은 publishable/anon key입니다.
+`SUPABASE_JWT_SECRET`은 HS256 legacy JWT를 직접 검증할 때만 사용합니다. ES256/RS256 access token은 Supabase Auth 서버로 검증합니다.
 `API_ALLOWED_ORIGINS`에는 로컬 프론트 주소와 배포된 프론트 주소를 쉼표로 넣습니다.
 
 `POST /api/v1/portfolio/recommendations`, `POST /api/v1/assets/valuation`, `POST /api/v1/news/related`는 Supabase 로그인 세션의 access token이 필요합니다.

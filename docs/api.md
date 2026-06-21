@@ -50,7 +50,8 @@
 | `TWELVE_DATA_API_KEY` 또는 `EODHD_API_KEY` | mock 가격을 실제 시장 가격으로 바꾸는 시점 | 필요 없음. mock 가격으로 계속 동작 |
 | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | FastAPI 뉴스 탭에서 실제 네이버 뉴스 조회를 테스트할 때 | 뉴스 탭에 실패 메시지 표시 |
 | `GEMINI_API_KEY` | FastAPI 뉴스 탭에서 보유 종목 AI 요약을 테스트할 때 | 기사 목록은 표시되고 AI 요약 카드만 비어 있음 |
-| `SUPABASE_JWT_SECRET` | 배포된 FastAPI가 Supabase access token을 검증할 때 | FastAPI 보호 endpoint가 `503` 반환 |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | 배포된 FastAPI가 Supabase access token을 Auth 서버로 검증할 때 | FastAPI 보호 endpoint가 `503` 반환 |
+| `SUPABASE_JWT_SECRET` | HS256 legacy JWT를 FastAPI가 직접 검증할 때 | 비대칭 JWT 검증에는 사용하지 않음 |
 | `API_ALLOWED_ORIGINS` | 로컬/배포 프론트에서 배포된 FastAPI를 호출할 때 | 브라우저 CORS 차단 |
 
 ## 2. 전체 구조
@@ -857,7 +858,7 @@ type PriceProviderResult = {
 1. Supabase migration 적용
 2. `stocks_seed_400.csv`를 `public.stocks`에 import
 3. `get-stock-price`, `get-exchange-rate` Edge Function 배포
-4. FastAPI 배포 환경변수에 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `GEMINI_API_KEY`, `SUPABASE_JWT_SECRET`, `API_ALLOWED_ORIGINS` 입력
+4. FastAPI 배포 환경변수에 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_JWT_SECRET`, `API_ALLOWED_ORIGINS` 입력
 5. 프론트 `.env.local`에 배포 FastAPI URL, Supabase URL/anon key 입력
 6. 로그인 상태에서 자산 추가부터 홈 차트/뉴스까지 end-to-end 확인
 7. 실제 가격 API가 필요해지는 시점에 Twelve Data 또는 EODHD를 선택하고 Supabase Secrets 등록
