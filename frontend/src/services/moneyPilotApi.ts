@@ -95,6 +95,10 @@ export async function requestRelatedNews(params: {
 
 async function postJson<ResponseBody>(path: string, body: unknown): Promise<ResponseBody> {
   const accessToken = await getAccessToken();
+  if (!accessToken) {
+    throw new MoneyPilotApiError("로그인 세션 토큰을 찾지 못했습니다. 다시 로그인해주세요.");
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: {
@@ -105,7 +109,7 @@ async function postJson<ResponseBody>(path: string, body: unknown): Promise<Resp
   });
 
   if (!response.ok) {
-    throw new MoneyPilotApiError(`API 요청 실패 (${response.status})`);
+    throw new MoneyPilotApiError(await readErrorMessage(response));
   }
 
   return (await response.json()) as ResponseBody;
@@ -119,4 +123,16 @@ async function getAccessToken() {
   } = await supabase.auth.getSession();
 
   return session?.access_token ?? null;
+}
+
+async function readErrorMessage(response: Response) {
+  try {
+    const payload = (await response.json()) as { detail?: unknown; error?: unknown; message?: unknown };
+    const detail = payload.detail ?? payload.error ?? payload.message;
+    if (typeof detail === "string") return `API 요청 실패 (${response.status}): ${detail}`;
+  } catch {
+    // Fall through to the generic status message.
+  }
+
+  return `API 요청 실패 (${response.status})`;
 }

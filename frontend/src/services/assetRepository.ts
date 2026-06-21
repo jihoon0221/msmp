@@ -338,7 +338,9 @@ async function refreshStockPrices(stockIds: string[]) {
   const targetStockIds = uniqueValues(stockIds);
   if (targetStockIds.length === 0) return;
 
+  const headers = await getAuthHeaders();
   const { error } = await client.functions.invoke("get-stock-price", {
+    headers,
     body: {
       stock_ids: targetStockIds,
     },
@@ -466,7 +468,9 @@ async function resolveBondPurchaseFxRate(input: BondAssetInput) {
 
 async function invokeExchangeRate(baseCurrency: string, quoteCurrency: string, rateDate?: string) {
   const client = requireSupabaseClient();
+  const headers = await getAuthHeaders();
   const { data, error } = await client.functions.invoke<ExchangeRateResponse>("get-exchange-rate", {
+    headers,
     body: {
       base_currency: baseCurrency,
       quote_currency: quoteCurrency,
@@ -477,6 +481,15 @@ async function invokeExchangeRate(baseCurrency: string, quoteCurrency: string, r
   if (error) throw error;
   if (!data?.rate) throw new AssetRepositoryError("환율 정보를 불러오지 못했습니다.");
   return data.rate;
+}
+
+async function getAuthHeaders() {
+  const client = requireSupabaseClient();
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  const accessToken = data.session?.access_token;
+  if (!accessToken) throw new AssetRepositoryError("로그인 세션 토큰을 찾지 못했습니다. 다시 로그인해주세요.");
+  return { Authorization: `Bearer ${accessToken}` };
 }
 
 function mapStockRow(row: StockRow): Stock {

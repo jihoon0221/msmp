@@ -120,12 +120,13 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
             digestSummary: newsResponse.digestSummary ?? [],
           });
         }
-      } catch {
+      } catch (newsError) {
         if (ignore) return;
+        console.warn("Failed to load related news.", newsError);
         setArticles([]);
         setDigestStatus(null);
         setDigestSummary([]);
-        setError(NEWS_ERROR_MESSAGE);
+        setError(newsError instanceof Error ? newsError.message : NEWS_ERROR_MESSAGE);
       } finally {
         if (!ignore) {
           setIsLoading(false);
