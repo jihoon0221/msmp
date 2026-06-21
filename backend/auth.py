@@ -90,11 +90,19 @@ def _verify_hs256_signature(header_segment: str, payload_segment: str, signature
 
 
 def _verify_with_supabase_auth_server(token: str) -> None:
-    supabase_url = (os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL") or "").rstrip("/")
+    supabase_url = (
+        os.getenv("SUPABASE_URL")
+        or os.getenv("VITE_SUPABASE_URL")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+        or os.getenv("SUPABASE_PROJECT_URL")
+        or ""
+    ).rstrip("/")
     publishable_key = (
         os.getenv("SUPABASE_PUBLISHABLE_KEY")
         or os.getenv("SUPABASE_ANON_KEY")
         or os.getenv("VITE_SUPABASE_ANON_KEY")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        or os.getenv("SUPABASE_KEY")
     )
     if not supabase_url or not publishable_key:
         raise HTTPException(
