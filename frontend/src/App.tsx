@@ -11,6 +11,7 @@ import { emptyAssetPortfolio } from "./lib/assetCalculations";
 import { emptyAssetValuation } from "./lib/assetValuation";
 import { getFallbackPortfolioModel, defaultFinancialInputs } from "./lib/finance";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import { listAssetPortfolio } from "./services/assetRepository";
 import { requestAssetValuation, requestPortfolioRecommendation } from "./services/moneyPilotApi";
 import type { AppTab, AssetPortfolio, AssetValuation, FinancialInputs, PortfolioModel } from "./types/domain";
 
@@ -20,6 +21,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [inputs, setInputs] = useState<FinancialInputs>(defaultFinancialInputs);
   const [assetPortfolio, setAssetPortfolio] = useState<AssetPortfolio>(emptyAssetPortfolio);
+  const [assetPortfolioLoaded, setAssetPortfolioLoaded] = useState(false);
   const [assetValuation, setAssetValuation] = useState<AssetValuation>(emptyAssetValuation);
   const [openAssetForm, setOpenAssetForm] = useState(false);
   const [portfolioDesigned, setPortfolioDesigned] = useState(false);
@@ -58,6 +60,7 @@ function App() {
       setSession(nextSession);
       if (!nextSession) {
         setAssetPortfolio(emptyAssetPortfolio);
+        setAssetPortfolioLoaded(false);
         setAssetValuation(emptyAssetValuation);
         setExcludedCandidates([]);
         setActiveTab("home");
@@ -69,6 +72,30 @@ function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+
+    let ignore = false;
+    setAssetPortfolioLoaded(false);
+
+    async function loadAssetPortfolio() {
+      try {
+        const portfolio = await listAssetPortfolio();
+        if (!ignore) setAssetPortfolio(portfolio);
+      } catch (error) {
+        console.warn("Failed to load asset portfolio.", error);
+        if (!ignore) setAssetPortfolio(emptyAssetPortfolio);
+      } finally {
+        if (!ignore) setAssetPortfolioLoaded(true);
+      }
+    }
+
+    void loadAssetPortfolio();
+    return () => {
+      ignore = true;
+    };
+  }, [session]);
 
   useEffect(() => {
     let ignore = false;
@@ -172,7 +199,14 @@ function App() {
     }
 
     if (activeTab === "explore") {
-      return <ExploreView inputs={inputsWithAssetTotal} model={model} assetPortfolio={assetPortfolio} />;
+      return (
+        <ExploreView
+          inputs={inputsWithAssetTotal}
+          model={model}
+          assetPortfolio={assetPortfolio}
+          assetPortfolioLoaded={assetPortfolioLoaded}
+        />
+      );
     }
 
     return (

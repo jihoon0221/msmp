@@ -18,6 +18,7 @@ type ExploreViewProps = {
   inputs: FinancialInputs;
   model: PortfolioModel;
   assetPortfolio: AssetPortfolio;
+  assetPortfolioLoaded: boolean;
 };
 
 const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
@@ -28,7 +29,7 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 
-export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps) {
+export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoaded }: ExploreViewProps) {
   const [articles, setArticles] = useState<RelatedNewsArticle[]>([]);
   const [digestSummary, setDigestSummary] = useState<RelatedNewsDigestSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,6 +46,11 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
     let ignore = false;
 
     async function fetchRelatedNews() {
+      if (!assetPortfolioLoaded) {
+        setIsLoading(true);
+        return;
+      }
+
       setIsLoading(true);
       setError(null);
 
@@ -75,7 +81,7 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
     return () => {
       ignore = true;
     };
-  }, [assetNames, candidateQueries, inputs.goalType, inputs.riskProfile, refreshCount, tickers]);
+  }, [assetNames, assetPortfolioLoaded, candidateQueries, inputs.goalType, inputs.riskProfile, refreshCount, tickers]);
 
   return (
     <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-950 px-5 py-5 pb-24">
