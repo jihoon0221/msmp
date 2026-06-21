@@ -29,6 +29,7 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v2";
 
 type CachedNewsPayload = {
   articles: RelatedNewsArticle[];
@@ -133,12 +134,16 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         <p className="text-[9px] font-semibold text-blue-300">네이버 뉴스 검색 API에서 최신 관련 기사를 가져옵니다.</p>
       </div>
 
-      {digestSummary.length > 0 ? (
-        <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-lg">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-xs font-extrabold">보유 종목 AI 요약</h3>
-            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[8px] font-bold text-blue-100">Gemini</span>
-          </div>
+      <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-lg">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-xs font-extrabold">보유 종목 AI 요약</h3>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[8px] font-bold text-blue-100">Gemini</span>
+        </div>
+        {isLoading ? (
+          <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
+            요약을 불러오는 중입니다.
+          </p>
+        ) : digestSummary.length > 0 ? (
           <ul className="space-y-2">
             {digestSummary.map((item) => (
               <li key={item.ticker} className="rounded-xl bg-white/10 px-3 py-2">
@@ -147,8 +152,12 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
               </li>
             ))}
           </ul>
-        </div>
-      ) : null}
+        ) : (
+          <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
+            요약할 보유 종목 뉴스가 없습니다.
+          </p>
+        )}
+      </div>
 
       <Card>
         <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-slate-100">보유 종목 기반 관련 기사</h3>
@@ -179,7 +188,7 @@ function buildNewsCacheKey(params: {
   riskProfile: FinancialInputs["riskProfile"];
   tickers: string[];
 }) {
-  return `moneyPilotRelatedNews:${JSON.stringify({
+  return `${NEWS_CACHE_PREFIX}:${JSON.stringify({
     assetNames: normalizeCacheValues(params.assetNames),
     candidateQueries: normalizeCacheValues(params.candidateQueries),
     goalType: params.goalType,
