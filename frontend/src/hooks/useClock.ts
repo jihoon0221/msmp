@@ -7,10 +7,19 @@ export function useClock() {
   const [time, setTime] = useState(() => formatTime(new Date()));
 
   useEffect(() => {
-    const timer = window.setInterval(() => setTime(formatTime(new Date())), 1000);
-    return () => window.clearInterval(timer);
+    let intervalId: number | undefined;
+    const now = new Date();
+    const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+    const timeoutId = window.setTimeout(() => {
+      setTime(formatTime(new Date()));
+      intervalId = window.setInterval(() => setTime(formatTime(new Date())), 60 * 1000);
+    }, msUntilNextMinute);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalId) window.clearInterval(intervalId);
+    };
   }, []);
 
   return time;
 }
-

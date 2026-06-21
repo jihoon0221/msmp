@@ -2,7 +2,6 @@ import { CalendarDays, ChartNoAxesColumn, Pencil, Plus, Search, Trash2, Wallet, 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { emptyAssetPortfolio } from "../../lib/assetCalculations";
 import { formatPercent, formatWon } from "../../lib/format";
 import {
   createBondAsset,
@@ -34,6 +33,8 @@ import type {
 type AssetsViewProps = {
   inputs: FinancialInputs;
   model: PortfolioModel;
+  assetPortfolio: AssetPortfolio;
+  assetPortfolioLoaded: boolean;
   assetValuation: AssetValuation;
   openAssetForm: boolean;
   onAssetFormOpened: () => void;
@@ -101,13 +102,15 @@ const assetTypeLabels: Record<AssetType, string> = {
 export function AssetsView({
   inputs,
   model,
+  assetPortfolio,
+  assetPortfolioLoaded,
   assetValuation,
   openAssetForm,
   onAssetFormOpened,
   onAssetPortfolioChange,
 }: AssetsViewProps) {
-  const [portfolio, setPortfolio] = useState<AssetPortfolio>(emptyAssetPortfolio);
-  const [loading, setLoading] = useState(false);
+  const [portfolio, setPortfolio] = useState<AssetPortfolio>(assetPortfolio);
+  const [loading, setLoading] = useState(!assetPortfolioLoaded);
   const [formOpen, setFormOpen] = useState(false);
   const [assetType, setAssetType] = useState<AssetType>("stock");
   const [error, setError] = useState<string | null>(null);
@@ -140,19 +143,25 @@ export function AssetsView({
   }, [onAssetFormOpened, openAssetForm]);
 
   useEffect(() => {
-    void refreshPortfolio();
-  }, []);
+    setPortfolio(assetPortfolio);
+  }, [assetPortfolio]);
 
   useEffect(() => {
-    onAssetPortfolioChange(portfolio);
-  }, [onAssetPortfolioChange, portfolio]);
+    setLoading(!assetPortfolioLoaded);
+  }, [assetPortfolioLoaded]);
 
   useEffect(() => {
     let ignore = false;
 
     async function runSearch() {
+      const normalizedQuery = stockQuery.trim();
+      if (!formOpen || assetType !== "stock" || !normalizedQuery) {
+        setStockResults((current) => (current.length > 0 ? [] : current));
+        return;
+      }
+
       try {
-        const results = await searchStocks(stockQuery, "all");
+        const results = await searchStocks(normalizedQuery, "all");
         if (!ignore) setStockResults(results);
       } catch {
         if (!ignore) setStockResults([]);
@@ -163,17 +172,18 @@ export function AssetsView({
     return () => {
       ignore = true;
     };
-  }, [stockQuery]);
+  }, [assetType, formOpen, stockQuery]);
 
   const refreshPortfolio = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      setPortfolio(await listAssetPortfolio());
+      const nextPortfolio = await listAssetPortfolio();
+      setPortfolio(nextPortfolio);
+      onAssetPortfolioChange(nextPortfolio);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "보유자산을 불러오지 못했습니다.");
-      setPortfolio(emptyAssetPortfolio);
     } finally {
       setLoading(false);
     }

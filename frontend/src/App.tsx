@@ -98,6 +98,8 @@ function App() {
   }, [session]);
 
   useEffect(() => {
+    if (!assetPortfolioLoaded) return;
+
     let ignore = false;
 
     async function runValuation() {
@@ -114,7 +116,7 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [assetPortfolio]);
+  }, [assetPortfolio, assetPortfolioLoaded]);
 
   const analyze = async () => {
     setExcludedCandidates([]);
@@ -190,6 +192,8 @@ function App() {
         <AssetsView
           inputs={inputsWithAssetTotal}
           model={model}
+          assetPortfolio={assetPortfolio}
+          assetPortfolioLoaded={assetPortfolioLoaded}
           assetValuation={assetValuation}
           openAssetForm={openAssetForm}
           onAssetFormOpened={() => setOpenAssetForm(false)}
