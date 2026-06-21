@@ -167,7 +167,12 @@ def generate_news_digest(articles: list[dict]) -> tuple[list[dict], RelatedNewsD
             },
             timeout=8,
         )
-        response.raise_for_status()
+        if not response.ok:
+            return [], RelatedNewsDigestStatus(
+                status="failed",
+                reason=_format_gemini_http_error(response),
+            )
+
         data = response.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"]
         parsed = json.loads(_strip_json_fence(text))
@@ -194,11 +199,29 @@ def generate_news_digest(articles: list[dict]) -> tuple[list[dict], RelatedNewsD
             )
 
         return digest_summary, RelatedNewsDigestStatus(status="success")
-    except (KeyError, TypeError, ValueError, requests.RequestException) as exc:
+    except requests.Timeout as exc:
         print(f"Gemini digest generation failed: {exc}", flush=True)
         return [], RelatedNewsDigestStatus(
             status="failed",
-            reason="Gemini 요약 생성 요청에 실패했습니다.",
+            reason="Gemini 요청 시간이 초과되었습니다.",
+        )
+    except requests.RequestException as exc:
+        print(f"Gemini digest generation failed: {exc}", flush=True)
+        return [], RelatedNewsDigestStatus(
+            status="failed",
+            reason=f"Gemini API 연결에 실패했습니다. ({type(exc).__name__})",
+        )
+    except json.JSONDecodeError as exc:
+        print(f"Gemini digest generation failed: {exc}", flush=True)
+        return [], RelatedNewsDigestStatus(
+            status="failed",
+            reason="Gemini 응답을 JSON으로 해석하지 못했습니다.",
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        print(f"Gemini digest generation failed: {exc}", flush=True)
+        return [], RelatedNewsDigestStatus(
+            status="failed",
+            reason=f"Gemini 응답 구조가 예상과 다릅니다. ({type(exc).__name__})",
         )
 
 
@@ -227,6 +250,24 @@ def _strip_json_fence(value: str) -> str:
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
     return text.strip()
+
+
+def _format_gemini_http_error(response: requests.Response) -> str:
+    detail = ""
+    try:
+        payload = response.json()
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(error, dict):
+            message = str(error.get("message") or "").strip()
+            status = str(error.get("status") or "").strip()
+            detail = " / ".join(value for value in [status, message] if value)
+    except ValueError:
+        detail = response.text[:160].strip()
+
+    if detail:
+        return f"Gemini API 오류 {response.status_code}: {detail}"
+
+    return f"Gemini API 오류 {response.status_code}: 응답 본문이 비어 있습니다."
 
 
 def _build_news_keywords(request: RelatedNewsRequest) -> list[str]:
