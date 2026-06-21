@@ -167,6 +167,14 @@ def generate_news_briefing(
             reason="보유 종목과 직접 매칭된 뉴스가 없습니다.",
         )
     if not api_key:
+        logger.warning(
+            "Gemini briefing skipped because GEMINI_API_KEY is not configured",
+            extra={
+                "article_count": len(articles),
+                "ticker_count": len(request.tickers),
+                "asset_name_count": len(request.assetNames),
+            },
+        )
         return None, RelatedNewsDigestStatus(
             status="skipped",
             reason="GEMINI_API_KEY가 설정되지 않았습니다.",
@@ -202,9 +210,18 @@ def generate_news_briefing(
             timeout=GEMINI_DIGEST_TIMEOUT_SECONDS,
         )
         if not response.ok:
+            error_reason = _format_gemini_http_error(response)
+            logger.warning(
+                "Gemini digest generation returned non-2xx response",
+                extra={
+                    "status_code": response.status_code,
+                    "reason": error_reason,
+                    "article_count": len(articles),
+                },
+            )
             return None, RelatedNewsDigestStatus(
                 status="failed",
-                reason=_format_gemini_http_error(response),
+                reason=error_reason,
             )
 
         data = response.json()
