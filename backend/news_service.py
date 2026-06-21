@@ -516,10 +516,30 @@ def _format_gemini_http_error(response: requests.Response) -> str:
     except ValueError:
         detail = response.text[:160].strip()
 
+    if _is_gemini_quota_error(response.status_code, detail):
+        return (
+            "Gemini 플랜의 요청 한도에 도달해 AI 브리핑을 생성하지 못했습니다. "
+            "잠시 후 다시 시도하거나 Gemini 사용량/결제 한도를 확인해주세요."
+        )
+
     if detail:
         return f"Gemini API 오류 {response.status_code}: {detail}"
 
     return f"Gemini API 오류 {response.status_code}: 응답 본문이 비어 있습니다."
+
+
+def _is_gemini_quota_error(status_code: int, detail: str) -> bool:
+    normalized_detail = detail.lower()
+    return status_code == 429 or any(
+        marker in normalized_detail
+        for marker in [
+            "resource_exhausted",
+            "quota",
+            "rate limit",
+            "rate_limit",
+            "exceeded",
+        ]
+    )
 
 
 def _build_related_news_cache_key(request: RelatedNewsRequest) -> str:
