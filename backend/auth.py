@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import requests
 from fastapi import HTTPException, Request, status
+from config import get_env_value
 
 
 @dataclass(frozen=True)
@@ -55,7 +56,7 @@ def _verify_supabase_jwt(token: str) -> dict:
             detail="토큰 형식이 올바르지 않습니다.",
         ) from None
 
-    if header.get("alg") == "HS256" and os.getenv("SUPABASE_JWT_SECRET"):
+    if header.get("alg") == "HS256" and get_env_value("SUPABASE_JWT_SECRET"):
         _verify_hs256_signature(header_segment, payload_segment, signature_segment)
     else:
         _verify_with_supabase_auth_server(token)
@@ -65,7 +66,7 @@ def _verify_supabase_jwt(token: str) -> dict:
 
 
 def _verify_hs256_signature(header_segment: str, payload_segment: str, signature_segment: str) -> None:
-    secret = os.getenv("SUPABASE_JWT_SECRET")
+    secret = get_env_value("SUPABASE_JWT_SECRET")
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -91,18 +92,18 @@ def _verify_hs256_signature(header_segment: str, payload_segment: str, signature
 
 def _verify_with_supabase_auth_server(token: str) -> None:
     supabase_url = (
-        os.getenv("SUPABASE_URL")
-        or os.getenv("VITE_SUPABASE_URL")
-        or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-        or os.getenv("SUPABASE_PROJECT_URL")
+        get_env_value("SUPABASE_URL")
+        or get_env_value("VITE_SUPABASE_URL")
+        or get_env_value("NEXT_PUBLIC_SUPABASE_URL")
+        or get_env_value("SUPABASE_PROJECT_URL")
         or ""
     ).rstrip("/")
     publishable_key = (
-        os.getenv("SUPABASE_PUBLISHABLE_KEY")
-        or os.getenv("SUPABASE_ANON_KEY")
-        or os.getenv("VITE_SUPABASE_ANON_KEY")
-        or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-        or os.getenv("SUPABASE_KEY")
+        get_env_value("SUPABASE_PUBLISHABLE_KEY")
+        or get_env_value("SUPABASE_ANON_KEY")
+        or get_env_value("VITE_SUPABASE_ANON_KEY")
+        or get_env_value("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        or get_env_value("SUPABASE_KEY")
     )
     if not supabase_url or not publishable_key:
         raise HTTPException(

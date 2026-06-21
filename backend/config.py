@@ -7,8 +7,25 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).with_name(".env"))
 
 
+def normalize_env_name(name: str) -> str:
+    return "".join(char for char in name.strip().upper() if char.isalnum())
+
+
+def get_env_value(name: str) -> str | None:
+    value = os.getenv(name)
+    if value:
+        return value
+
+    normalized_name = normalize_env_name(name)
+    for key, candidate in os.environ.items():
+        if normalize_env_name(key) == normalized_name and candidate:
+            return candidate
+
+    return None
+
+
 def is_env_set(name: str) -> bool:
-    return bool(os.getenv(name))
+    return bool(get_env_value(name))
 
 
 def is_any_env_set(names: list[str]) -> bool:
@@ -16,7 +33,7 @@ def is_any_env_set(names: list[str]) -> bool:
 
 
 def get_allowed_origins() -> list[str]:
-    raw_value = os.getenv("API_ALLOWED_ORIGINS", "")
+    raw_value = get_env_value("API_ALLOWED_ORIGINS") or ""
     origins = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
     return origins or [
         "http://localhost:5173",
