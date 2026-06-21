@@ -2,7 +2,7 @@ import {
   FileText,
   RotateCw,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "../../components/ui/Card";
 import { getAssetPortfolioNewsInputs } from "../../lib/assetCalculations";
 import { requestRelatedNews } from "../../services/moneyPilotApi";
@@ -47,7 +47,6 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
-  const lastLoadedCacheKeyRef = useRef<string | null>(null);
   const newsInputs = useMemo(() => getAssetPortfolioNewsInputs(assetPortfolio), [assetPortfolio]);
   const { assetNames, tickers } = newsInputs;
   const candidateQueries = useMemo(
@@ -90,13 +89,12 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
       setDigestSummary([]);
 
       try {
-        const canUseLocalCache = refreshCount === 0 && lastLoadedCacheKeyRef.current === cacheKey;
+        const canUseLocalCache = refreshCount === 0;
         const cachedNews = canUseLocalCache ? readCachedNews(cacheKey) : null;
         if (cachedNews) {
           setArticles(cachedNews.articles);
           setDigestStatus(cachedNews.digestStatus);
           setDigestSummary(cachedNews.digestSummary);
-          lastLoadedCacheKeyRef.current = cacheKey;
           setIsLoading(false);
           return;
         }
@@ -112,7 +110,6 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         setArticles(newsResponse.articles);
         setDigestStatus(newsResponse.digestStatus ?? null);
         setDigestSummary(newsResponse.digestSummary ?? []);
-        lastLoadedCacheKeyRef.current = cacheKey;
         if (newsResponse.articles.length > 0 || newsResponse.digestSummary?.length > 0) {
           writeCachedNews(cacheKey, {
             articles: newsResponse.articles,
