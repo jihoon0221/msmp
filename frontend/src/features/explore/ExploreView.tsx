@@ -28,6 +28,12 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 };
 
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
+const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+
+type CachedNewsPayload = {
+  articles: RelatedNewsArticle[];
+  digestSummary: RelatedNewsDigestSummary[];
+};
 
 export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoaded }: ExploreViewProps) {
   const [articles, setArticles] = useState<RelatedNewsArticle[]>([]);
@@ -40,6 +46,17 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
   const candidateQueries = useMemo(
     () => model.allocations.flatMap((allocation) => allocation.candidates.map((candidate) => candidate.query)),
     [model],
+  );
+  const cacheKey = useMemo(
+    () =>
+      buildNewsCacheKey({
+        assetNames,
+        candidateQueries,
+        goalType: inputs.goalType,
+        riskProfile: inputs.riskProfile,
+        tickers,
+      }),
+    [assetNames, candidateQueries, inputs.goalType, inputs.riskProfile, tickers],
   );
 
   useEffect(() => {
@@ -55,6 +72,14 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
       setError(null);
 
       try {
+        const cachedNews = refreshCount === 0 ? readCachedNews(cacheKey) : null;
+        if (cachedNews) {
+          setArticles(cachedNews.articles);
+          setDigestSummary(cachedNews.digestSummary);
+          setIsLoading(false);
+          return;
+        }
+
         const newsResponse = await requestRelatedNews({
           assetNames,
           tickers,
@@ -65,6 +90,10 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         if (ignore) return;
         setArticles(newsResponse.articles);
         setDigestSummary(newsResponse.digestSummary ?? []);
+        writeCachedNews(cacheKey, {
+          articles: newsResponse.articles,
+          digestSummary: newsResponse.digestSummary ?? [],
+        });
       } catch {
         if (ignore) return;
         setArticles([]);
@@ -81,7 +110,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
     return () => {
       ignore = true;
     };
-  }, [assetNames, assetPortfolioLoaded, candidateQueries, inputs.goalType, inputs.riskProfile, refreshCount, tickers]);
+  }, [assetNames, assetPortfolioLoaded, cacheKey, candidateQueries, inputs.goalType, inputs.riskProfile, refreshCount, tickers]);
 
   return (
     <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-950 px-5 py-5 pb-24">
@@ -141,6 +170,61 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
       </Card>
     </main>
   );
+}
+
+function buildNewsCacheKey(params: {
+  assetNames: string[];
+  candidateQueries: string[];
+  goalType: FinancialInputs["goalType"];
+  riskProfile: FinancialInputs["riskProfile"];
+  tickers: string[];
+}) {
+  return `moneyPilotRelatedNews:${JSON.stringify({
+    assetNames: normalizeCacheValues(params.assetNames),
+    candidateQueries: normalizeCacheValues(params.candidateQueries),
+    goalType: params.goalType,
+    riskProfile: params.riskProfile,
+    tickers: normalizeCacheValues(params.tickers),
+  })}`;
+}
+
+function normalizeCacheValues(values: string[]) {
+  return values.map((value) => value.trim()).filter(Boolean).sort();
+}
+
+function readCachedNews(cacheKey: string): CachedNewsPayload | null {
+  try {
+    const rawValue = localStorage.getItem(cacheKey);
+    if (!rawValue) return null;
+
+    const parsed = JSON.parse(rawValue) as CachedNewsPayload & { cachedAt?: number };
+    if (!parsed.cachedAt || Date.now() - parsed.cachedAt > NEWS_CACHE_TTL_MS) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+
+    return {
+      articles: Array.isArray(parsed.articles) ? parsed.articles : [],
+      digestSummary: Array.isArray(parsed.digestSummary) ? parsed.digestSummary : [],
+    };
+  } catch {
+    localStorage.removeItem(cacheKey);
+    return null;
+  }
+}
+
+function writeCachedNews(cacheKey: string, payload: CachedNewsPayload) {
+  try {
+    localStorage.setItem(
+      cacheKey,
+      JSON.stringify({
+        ...payload,
+        cachedAt: Date.now(),
+      }),
+    );
+  } catch {
+    // Ignore cache write failures; news still renders from the live response.
+  }
 }
 
 function ArticleRow({ article }: { article: RelatedNewsArticle }) {
