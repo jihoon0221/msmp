@@ -31,7 +31,7 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const NEWS_SHORT_CACHE_TTL_MS = 10 * 60 * 1000;
-const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v8";
+const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v9";
 const NEWS_CANDIDATES_PER_CATEGORY = 1;
 
 type CachedNewsPayload = {

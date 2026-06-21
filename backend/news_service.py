@@ -17,7 +17,7 @@ GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/
 RELATED_NEWS_CACHE_TTL_SECONDS = 2 * 60 * 60
 RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS = 10 * 60
 RELATED_NEWS_CACHE_MAX_ENTRIES = 64
-RELATED_NEWS_CACHE_VERSION = 4
+RELATED_NEWS_CACHE_VERSION = 5
 NEWS_MAX_HOLDING_TICKERS = 4
 NEWS_MAX_HOLDING_NAMES = 4
 NEWS_MAX_CANDIDATE_QUERIES = 3
@@ -205,7 +205,14 @@ def generate_news_digest(articles: list[dict]) -> tuple[list[dict], RelatedNewsD
                 "Gemini 응답에서 유효한 요약을 찾지 못해 기사 제목 기반 요약을 표시합니다.",
             )
 
-        return digest_summary, RelatedNewsDigestStatus(status="success")
+        completed_summary, missing_count = _complete_digest_summary(digest_summary, grouped_articles)
+        if missing_count > 0:
+            return completed_summary, RelatedNewsDigestStatus(
+                status="skipped",
+                reason="Gemini가 일부 종목 요약을 누락해 기사 기반 요약을 함께 표시합니다.",
+            )
+
+        return completed_summary, RelatedNewsDigestStatus(status="success")
     except requests.Timeout as exc:
         logger.warning("Gemini digest generation timed out", exc_info=True)
         return _build_digest_fallback(
@@ -275,6 +282,47 @@ def _build_digest_fallback(
         return digest_summary, RelatedNewsDigestStatus(status="skipped", reason=reason)
 
     return [], RelatedNewsDigestStatus(status="failed", reason=reason)
+
+
+def _complete_digest_summary(
+    digest_summary: list[dict],
+    grouped_articles: dict[str, list[dict]],
+) -> tuple[list[dict], int]:
+    target_groups = list(grouped_articles.items())[:DIGEST_MAX_GROUPS]
+    target_tickers = {ticker for ticker, _articles in target_groups}
+    target_by_key = {_normalize_digest_key(ticker): ticker for ticker in target_tickers}
+    completed_summary = []
+    seen_keys = set()
+
+    for item in digest_summary:
+        ticker = str(item.get("ticker") or "").strip()
+        summary = str(item.get("summary") or "").strip()
+        ticker_key = _normalize_digest_key(ticker)
+        if not ticker_key or not summary or ticker_key not in target_by_key or ticker_key in seen_keys:
+            continue
+
+        seen_keys.add(ticker_key)
+        completed_summary.append({
+            "ticker": target_by_key[ticker_key],
+            "summary": summary[:60],
+        })
+
+    missing_count = 0
+    for ticker, articles in target_groups:
+        ticker_key = _normalize_digest_key(ticker)
+        if ticker_key in seen_keys:
+            continue
+
+        summary = _build_fallback_digest_text(articles[0]) if articles else ""
+        if summary:
+            missing_count += 1
+            completed_summary.append({"ticker": ticker, "summary": summary})
+
+    return completed_summary, missing_count
+
+
+def _normalize_digest_key(value: str) -> str:
+    return re.sub(r"\s+", "", value).casefold()
 
 
 def _build_fallback_digest_text(article: dict) -> str:
