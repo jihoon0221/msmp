@@ -23,7 +23,7 @@ GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/
 RELATED_NEWS_CACHE_TTL_SECONDS = 2 * 60 * 60
 RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS = 10 * 60
 RELATED_NEWS_CACHE_MAX_ENTRIES = 64
-RELATED_NEWS_CACHE_VERSION = 6
+RELATED_NEWS_CACHE_VERSION = 7
 NEWS_MAX_HOLDING_TICKERS = 4
 NEWS_MAX_HOLDING_NAMES = 4
 NEWS_MAX_CANDIDATE_QUERIES = 3
@@ -318,13 +318,9 @@ def _parse_digest_briefing(
         str(parsed.get("title") or parsed.get("headline") or "보유자산 뉴스 브리핑"),
         28,
     )
-    overview = _truncate_display_text(
-        str(parsed.get("overview") or parsed.get("summary") or parsed.get("핵심") or ""),
-        180,
-    )
-    portfolio_impact = _truncate_display_text(
-        str(parsed.get("portfolioImpact") or parsed.get("portfolio_impact") or parsed.get("impact") or parsed.get("영향") or ""),
-        180,
+    overview = _clean_display_text(str(parsed.get("overview") or parsed.get("summary") or parsed.get("핵심") or ""))
+    portfolio_impact = _clean_display_text(
+        str(parsed.get("portfolioImpact") or parsed.get("portfolio_impact") or parsed.get("impact") or parsed.get("영향") or "")
     )
 
     if not overview or not portfolio_impact:
@@ -362,7 +358,7 @@ def _build_briefing_fallback(
 
     briefing = RelatedNewsDigestBriefing(
         title="보유자산 뉴스 브리핑",
-        overview=_truncate_display_text(overview, 180),
+        overview=_clean_display_text(overview),
         portfolioImpact="단일 기사 흐름만으로 방향성을 단정하기보다, 해당 자산의 실적·금리·환율 변화를 함께 확인하는 것이 좋습니다.",
         watchPoints=_default_watch_points(),
         relatedAssets=related_assets[:6],

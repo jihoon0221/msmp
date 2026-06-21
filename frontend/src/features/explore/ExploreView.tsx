@@ -32,7 +32,7 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const NEWS_SHORT_CACHE_TTL_MS = 10 * 60 * 1000;
-const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v10";
+const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v11";
 const NEWS_CANDIDATES_PER_CATEGORY = 1;
 
 type CachedNewsPayload = {
@@ -179,23 +179,23 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
           <div className="space-y-3">
             <div className="rounded-xl bg-white/10 px-3 py-2.5">
               <strong className="mb-1 block text-[11px] text-white">{digestBriefing.title}</strong>
-              <p className="text-[10px] leading-relaxed text-slate-300">{digestBriefing.overview}</p>
+              <p className="break-words text-[10px] leading-relaxed text-slate-300">{digestBriefing.overview}</p>
             </div>
             <div className="rounded-xl bg-white/10 px-3 py-2.5">
               <span className="mb-1 block text-[9px] font-extrabold text-blue-200">포트폴리오 영향</span>
-              <p className="text-[10px] leading-relaxed text-slate-300">{digestBriefing.portfolioImpact}</p>
+              <p className="break-words text-[10px] leading-relaxed text-slate-300">{digestBriefing.portfolioImpact}</p>
             </div>
             {digestBriefing.watchPoints.length > 0 ? (
               <ul className="space-y-1.5">
                 {digestBriefing.watchPoints.map((point) => (
-                  <li key={point} className="rounded-lg bg-white/10 px-3 py-1.5 text-[10px] leading-relaxed text-slate-300">
+                  <li key={point} className="break-words rounded-lg bg-white/10 px-3 py-1.5 text-[10px] leading-relaxed text-slate-300">
                     {point}
                   </li>
                 ))}
               </ul>
             ) : null}
             {digestBriefing.relatedAssets.length > 0 ? (
-              <p className="text-[9px] font-semibold text-slate-400">관련 자산: {digestBriefing.relatedAssets.join(" · ")}</p>
+              <p className="break-words text-[9px] font-semibold text-slate-400">관련 자산: {digestBriefing.relatedAssets.join(" · ")}</p>
             ) : null}
           </div>
         ) : digestSummary.length > 0 ? (
@@ -330,8 +330,8 @@ function ArticleRow({ article }: { article: RelatedNewsArticle }) {
           </span>
           <span className="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-[8px] font-bold text-blue-300">원문</span>
         </div>
-        <p className="line-clamp-2 text-xs font-bold text-slate-100">{article.title}</p>
-        <p className="mt-1 line-clamp-2 text-[9px] text-slate-400">{article.summary}</p>
+        <p className="break-words text-xs font-bold leading-relaxed text-slate-100">{article.title}</p>
+        <p className="mt-1 break-words text-[9px] leading-relaxed text-slate-400">{article.summary}</p>
       </div>
     </a>
   );
