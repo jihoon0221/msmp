@@ -148,7 +148,6 @@ def get_related_news_v1(request: RelatedNewsRequest) -> RelatedNewsResponse:
 
     response = RelatedNewsResponse(
         articles=articles,
-        digestSummary=[],
         digestBriefing=digest_briefing,
         digestStatus=digest_status,
     )

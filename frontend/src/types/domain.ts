@@ -66,11 +66,6 @@ export type RelatedNewsArticle = {
   fetchedAt: string;
 };
 
-export type RelatedNewsDigestSummary = {
-  ticker: string;
-  summary: string;
-};
-
 export type RelatedNewsDigestBriefing = {
   title: string;
   overview: string;

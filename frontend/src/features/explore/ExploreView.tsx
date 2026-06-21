@@ -13,7 +13,6 @@ import type {
   RelatedNewsArticle,
   RelatedNewsDigestBriefing,
   RelatedNewsDigestStatus,
-  RelatedNewsDigestSummary,
 } from "../../types/domain";
 
 type ExploreViewProps = {
@@ -32,21 +31,19 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const NEWS_SHORT_CACHE_TTL_MS = 10 * 60 * 1000;
-const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v13";
+const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v14";
 const NEWS_CANDIDATES_PER_CATEGORY = 1;
 
 type CachedNewsPayload = {
   articles: RelatedNewsArticle[];
   digestBriefing: RelatedNewsDigestBriefing | null;
   digestStatus: RelatedNewsDigestStatus | null;
-  digestSummary: RelatedNewsDigestSummary[];
 };
 
 export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoaded }: ExploreViewProps) {
   const [articles, setArticles] = useState<RelatedNewsArticle[]>([]);
   const [digestBriefing, setDigestBriefing] = useState<RelatedNewsDigestBriefing | null>(null);
   const [digestStatus, setDigestStatus] = useState<RelatedNewsDigestStatus | null>(null);
-  const [digestSummary, setDigestSummary] = useState<RelatedNewsDigestSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
@@ -74,7 +71,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
       }),
     [assetNames, candidateQueries, inputs.goalType, inputs.riskProfile, tickers],
   );
-  const digestBadge = digestStatus?.status === "success" ? "Gemini" : digestBriefing || digestSummary.length > 0 ? "기사 기반" : "Gemini";
+  const digestBadge = digestStatus?.status === "success" ? "Gemini" : digestBriefing ? "기사 기반" : "Gemini";
 
   useEffect(() => {
     let ignore = false;
@@ -90,7 +87,6 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
       setArticles([]);
       setDigestBriefing(null);
       setDigestStatus(null);
-      setDigestSummary([]);
 
       try {
         const canUseLocalCache = refreshCount === 0;
@@ -99,7 +95,6 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
           setArticles(cachedNews.articles);
           setDigestBriefing(cachedNews.digestBriefing);
           setDigestStatus(cachedNews.digestStatus);
-          setDigestSummary(cachedNews.digestSummary);
           setIsLoading(false);
           return;
         }
@@ -115,13 +110,11 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         setArticles(newsResponse.articles);
         setDigestBriefing(newsResponse.digestBriefing ?? null);
         setDigestStatus(newsResponse.digestStatus ?? null);
-        setDigestSummary(newsResponse.digestSummary ?? []);
-        if (newsResponse.articles.length > 0 || newsResponse.digestBriefing || newsResponse.digestSummary?.length > 0) {
+        if (newsResponse.articles.length > 0 || newsResponse.digestBriefing) {
           writeCachedNews(cacheKey, {
             articles: newsResponse.articles,
             digestBriefing: newsResponse.digestBriefing ?? null,
             digestStatus: newsResponse.digestStatus ?? null,
-            digestSummary: newsResponse.digestSummary ?? [],
           });
         }
       } catch (newsError) {
@@ -130,7 +123,6 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
         setArticles([]);
         setDigestBriefing(null);
         setDigestStatus(null);
-        setDigestSummary([]);
         setError(newsError instanceof Error ? newsError.message : NEWS_ERROR_MESSAGE);
       } finally {
         if (!ignore) {
@@ -198,15 +190,6 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
               <p className="break-words text-[9px] font-semibold text-slate-400">관련 자산: {digestBriefing.relatedAssets.join(" · ")}</p>
             ) : null}
           </div>
-        ) : digestSummary.length > 0 ? (
-          <ul className="space-y-2">
-            {digestSummary.map((item) => (
-              <li key={item.ticker} className="rounded-xl bg-white/10 px-3 py-2">
-                <strong className="block text-[11px] text-white">{item.ticker}</strong>
-                <span className="text-[10px] leading-relaxed text-slate-300">{item.summary}</span>
-              </li>
-            ))}
-          </ul>
         ) : (
           <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
             {digestStatus?.reason ?? "브리핑할 보유자산 뉴스가 없습니다."}
@@ -264,8 +247,7 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
     const parsed = JSON.parse(rawValue) as CachedNewsPayload & { cachedAt?: number };
     const parsedArticles = Array.isArray(parsed.articles) ? parsed.articles : [];
     const parsedDigestBriefing = isDigestBriefing(parsed.digestBriefing) ? parsed.digestBriefing : null;
-    const parsedDigestSummary = Array.isArray(parsed.digestSummary) ? parsed.digestSummary : [];
-    if (parsedArticles.length === 0 && !parsedDigestBriefing && parsedDigestSummary.length === 0) {
+    if (parsedArticles.length === 0 && !parsedDigestBriefing) {
       localStorage.removeItem(cacheKey);
       return null;
     }
@@ -283,7 +265,6 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
       articles: parsedArticles,
       digestBriefing: parsedDigestBriefing,
       digestStatus: parsed.digestStatus ?? null,
-      digestSummary: parsedDigestSummary,
     };
   } catch {
     localStorage.removeItem(cacheKey);

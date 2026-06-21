@@ -124,7 +124,6 @@ class RelatedNewsDigestBriefing(BaseModel):
 
 class RelatedNewsResponse(BaseModel):
     articles: list[RelatedNewsArticle]
-    digestSummary: list[dict] = Field(default_factory=list)
     digestBriefing: RelatedNewsDigestBriefing | None = None
     digestStatus: RelatedNewsDigestStatus = Field(
         default_factory=lambda: RelatedNewsDigestStatus(

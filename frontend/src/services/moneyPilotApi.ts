@@ -7,7 +7,6 @@ import type {
   RelatedNewsArticle,
   RelatedNewsDigestBriefing,
   RelatedNewsDigestStatus,
-  RelatedNewsDigestSummary,
 } from "../types/domain";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
@@ -32,7 +31,6 @@ type PortfolioRecommendationResponse = {
 
 type RelatedNewsResponse = {
   articles: RelatedNewsArticle[];
-  digestSummary: RelatedNewsDigestSummary[];
   digestBriefing: RelatedNewsDigestBriefing | null;
   digestStatus: RelatedNewsDigestStatus;
 };
