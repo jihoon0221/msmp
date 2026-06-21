@@ -1,6 +1,8 @@
 import {
-  X,
+  AlertTriangle,
   Network,
+  Settings2,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/Button";
@@ -8,13 +10,14 @@ import { Card } from "../../components/ui/Card";
 import { getGoalLabel } from "../../constants/goals";
 import { computeSimulationStats } from "../../lib/finance";
 import { formatManwon } from "../../lib/format";
-import type { AssetValuation, FinancialInputs, PortfolioModel } from "../../types/domain";
-
+import type { AssetValuation, FinancialInputs, PortfolioAllocation, PortfolioModel } from "../../types/domain";
 
 type PortfolioDashboardProps = {
   inputs: FinancialInputs;
   model: PortfolioModel;
   assetValuation: AssetValuation;
+  excludedCandidates: string[];
+  onToggleCandidate: (candidateName: string) => void;
   onRebalanceNow: () => void;
   onReset: () => void;
 };
@@ -48,18 +51,42 @@ type GoalFeasibility = {
 
 const REBALANCE_SUPPRESS_UNTIL_KEY = "moneyPilotRebalanceSuppressUntil";
 
-export function PortfolioDashboard({ inputs, model, assetValuation, onRebalanceNow, onReset }: PortfolioDashboardProps) {
+export function PortfolioDashboard({
+  inputs,
+  model,
+  assetValuation,
+  excludedCandidates,
+  onToggleCandidate,
+  onRebalanceNow,
+  onReset,
+}: PortfolioDashboardProps) {
   const [rebalanceDismissed, setRebalanceDismissed] = useState(false);
   const [rebalanceSuppressUntil, setRebalanceSuppressUntil] = useState(() => getStoredRebalanceSuppressUntil());
+  const [candidateEditorOpen, setCandidateEditorOpen] = useState(false);
   const simulation = useMemo(() => computeSimulationStats(inputs, model), [inputs, model]);
+  const recommendedAllocations = useMemo(
+    () => normalizeIncludedAllocations(model.allocations, excludedCandidates),
+    [excludedCandidates, model.allocations],
+  );
+  const explanationModel = useMemo(
+    () => ({
+      ...model,
+      allocations: recommendedAllocations.length > 0 ? recommendedAllocations : model.allocations,
+    }),
+    [model, recommendedAllocations],
+  );
   const feasibility = useMemo(() => getGoalFeasibility(inputs), [inputs]);
   const decisionExplanation = useMemo(
-    () => getPortfolioDecisionExplanation(inputs, model, feasibility),
-    [feasibility, inputs, model],
+    () => getPortfolioDecisionExplanation(inputs, explanationModel, feasibility),
+    [explanationModel, feasibility, inputs],
   );
   const rebalanceDeviations = useMemo(
-    () => getRebalanceDeviations(model.allocations, assetValuation.allocations),
-    [assetValuation.allocations, model.allocations],
+    () => getRebalanceDeviations(recommendedAllocations, assetValuation.allocations),
+    [assetValuation.allocations, recommendedAllocations],
+  );
+  const includedCandidateCount = recommendedAllocations.reduce(
+    (count, allocation) => count + allocation.candidates.length,
+    0,
   );
   const shouldShowRebalanceModal =
     rebalanceDeviations.length > 0 && !rebalanceDismissed && Date.now() >= rebalanceSuppressUntil;
@@ -97,8 +124,16 @@ export function PortfolioDashboard({ inputs, model, assetValuation, onRebalanceN
         </div>
 
         <div className="mb-6 rounded-[28px] border border-slate-700 bg-slate-900 p-5 shadow-sm">
-          <AllocationStack title="추천 비중" allocations={model.allocations} />
-          <AllocationStack title="내 자산 기준 비중" allocations={assetValuation.allocations} emptyMessage="입력된 자산이 없습니다." />
+          <AllocationStack
+            title="추천 비중"
+            allocations={recommendedAllocations}
+            emptyMessage="추가된 추천 후보가 없습니다."
+          />
+          <AllocationStack
+            title="내 자산 기준 비중"
+            allocations={assetValuation.allocations}
+            emptyMessage="입력된 자산이 없습니다."
+          />
         </div>
 
         <div className="mb-6 rounded-xl border border-blue-800 bg-blue-950/40 p-4">
@@ -137,28 +172,54 @@ export function PortfolioDashboard({ inputs, model, assetValuation, onRebalanceN
               <Network size={12} />
               부문별 적합 금융상품 후보군
             </h4>
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[9px] font-extrabold text-slate-200 shadow-sm transition hover:border-blue-500 hover:text-blue-200"
+              onClick={() => setCandidateEditorOpen(true)}
+            >
+              <Settings2 size={11} />
+              편집
+            </button>
           </div>
-          <div className="space-y-3">
-            {model.allocations.map((allocation) => (
-              <div key={allocation.key}>
-                <p className="mb-1 text-[10px] font-black text-slate-200">{allocation.label}</p>
-                <div className="space-y-1.5">
-                  {allocation.candidates.map((candidate) => (
-                    <div key={candidate.name} className="rounded-lg bg-slate-800 p-2 text-[10px] text-slate-300">
-                      <div className="flex items-center justify-between gap-2">
-                        <strong className="text-slate-100">{candidate.name}</strong>
-                        <span className="rounded bg-blue-800 px-1.5 py-0.5 font-bold text-blue-100">{candidate.category}</span>
+          {includedCandidateCount > 0 ? (
+            <div className="space-y-3">
+              {recommendedAllocations.map((allocation) => (
+                <div key={allocation.key}>
+                  <p className="mb-1 text-[10px] font-black text-slate-200">{allocation.label}</p>
+                  <div className="space-y-1.5">
+                    {allocation.candidates.map((candidate) => (
+                      <div key={candidate.name} className="rounded-lg bg-slate-800 p-2 text-[10px] text-slate-300">
+                        <div className="flex items-center justify-between gap-2">
+                          <strong className="text-slate-100">{candidate.name}</strong>
+                          <span className="rounded bg-blue-800 px-1.5 py-0.5 font-bold text-blue-100">{candidate.category}</span>
+                        </div>
+                        <p className="mt-1 leading-relaxed text-slate-300">{candidate.reason}</p>
                       </div>
-                      <p className="mt-1 leading-relaxed text-slate-300">{candidate.reason}</p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-700 bg-amber-950/40 p-3 text-amber-100">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[10px] font-extrabold">모든 추천 종목이 제외되었습니다.</p>
+                <p className="mt-0.5 text-[9px] leading-relaxed text-amber-200">편집에서 후보 종목을 다시 추가해 주세요.</p>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
-
       </Card>
+
+      {candidateEditorOpen ? (
+        <CandidateEditor
+          allocations={model.allocations}
+          excludedCandidates={excludedCandidates}
+          onClose={() => setCandidateEditorOpen(false)}
+          onToggleCandidate={onToggleCandidate}
+        />
+      ) : null}
 
       {shouldShowRebalanceModal ? (
         <RebalanceModal
@@ -176,8 +237,103 @@ export function PortfolioDashboard({ inputs, model, assetValuation, onRebalanceN
           }}
         />
       ) : null}
-
     </main>
+  );
+}
+
+function CandidateEditor({
+  allocations,
+  excludedCandidates,
+  onClose,
+  onToggleCandidate,
+}: {
+  allocations: PortfolioAllocation[];
+  excludedCandidates: string[];
+  onClose: () => void;
+  onToggleCandidate: (candidateName: string) => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-[60] flex flex-col bg-slate-950">
+      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950 px-5 pb-4 pt-9">
+        <div>
+          <p className="mb-0.5 text-[10px] font-bold text-blue-300">추천 포트폴리오</p>
+          <h3 className="text-lg font-black text-slate-100">포트폴리오 종목 편집</h3>
+        </div>
+        <button
+          type="button"
+          aria-label="포트폴리오 종목 편집 닫기"
+          className="rounded-xl border border-slate-700 bg-slate-900 p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+          onClick={onClose}
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="no-scrollbar flex-1 overflow-y-auto px-5 py-5 pb-8">
+        <div className="mb-5 flex items-start gap-2 rounded-xl border border-blue-900 bg-blue-950/40 p-3">
+          <Settings2 size={15} className="mt-0.5 shrink-0 text-blue-300" />
+          <p className="text-[10px] leading-relaxed text-blue-100">
+            추천 후보를 직접 추가하거나 제외할 수 있습니다.
+          </p>
+        </div>
+
+        <div className="space-y-5">
+          {allocations.map((allocation) => {
+            const includedCount = allocation.candidates.filter(
+              (candidate) => !excludedCandidates.includes(candidate.name),
+            ).length;
+
+            return (
+              <section key={allocation.key}>
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: allocation.color }} />
+                    <h4 className="text-xs font-extrabold text-slate-100">{allocation.label}</h4>
+                  </div>
+                  <span className="text-[9px] font-bold text-slate-500">
+                    {includedCount}/{allocation.candidates.length} 추가
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {allocation.candidates.map((candidate) => {
+                    const excluded = excludedCandidates.includes(candidate.name);
+
+                    return (
+                      <div key={candidate.name} className="rounded-2xl border border-slate-800 bg-slate-900 p-3 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                              <strong className="text-xs text-slate-100">{candidate.name}</strong>
+                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[8px] font-bold text-slate-300">
+                                {candidate.category}
+                              </span>
+                            </div>
+                            <p className="text-[9px] leading-relaxed text-slate-400">{candidate.reason}</p>
+                          </div>
+                          <button
+                            type="button"
+                            aria-pressed={!excluded}
+                            className={`shrink-0 rounded-full px-3 py-1.5 text-[9px] font-extrabold transition ${
+                              excluded
+                                ? "border border-slate-700 bg-slate-800 text-slate-400 hover:border-blue-500 hover:bg-blue-950 hover:text-blue-200"
+                                : "bg-blue-600 text-white shadow-sm hover:bg-blue-500"
+                            }`}
+                            onClick={() => onToggleCandidate(candidate.name)}
+                          >
+                            {excluded ? "제외됨" : "추가됨"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -307,6 +463,43 @@ function MetricTile({ label, value }: { label: string; value: string }) {
       <p className="truncate text-[11px] font-black text-slate-100">{value}</p>
     </div>
   );
+}
+
+function normalizeIncludedAllocations(
+  allocations: PortfolioAllocation[],
+  excludedCandidates: string[],
+): PortfolioAllocation[] {
+  const activeAllocations = allocations
+    .map((allocation) => ({
+      ...allocation,
+      candidates: allocation.candidates.filter((candidate) => !excludedCandidates.includes(candidate.name)),
+    }))
+    .filter((allocation) => allocation.candidates.length > 0);
+  const totalWeight = activeAllocations.reduce((total, allocation) => total + allocation.weight, 0);
+
+  if (totalWeight === 0) return [];
+
+  const normalizedAllocations = activeAllocations.map((allocation) => {
+    const exactWeight = (allocation.weight / totalWeight) * 100;
+    return {
+      allocation,
+      weight: Math.floor(exactWeight),
+      remainder: exactWeight - Math.floor(exactWeight),
+    };
+  });
+  let remainingWeight = 100 - normalizedAllocations.reduce((total, item) => total + item.weight, 0);
+
+  normalizedAllocations
+    .map((item, index) => ({ index, remainder: item.remainder }))
+    .sort((a, b) => b.remainder - a.remainder)
+    .forEach(({ index }) => {
+      if (remainingWeight > 0) {
+        normalizedAllocations[index].weight += 1;
+        remainingWeight -= 1;
+      }
+    });
+
+  return normalizedAllocations.map(({ allocation, weight }) => ({ ...allocation, weight }));
 }
 
 function getRebalanceDeviations(targetAllocations: AllocationSummary[], actualAllocations: AllocationSummary[]) {

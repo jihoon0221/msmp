@@ -23,6 +23,7 @@ function App() {
   const [assetValuation, setAssetValuation] = useState<AssetValuation>(emptyAssetValuation);
   const [openAssetForm, setOpenAssetForm] = useState(false);
   const [portfolioDesigned, setPortfolioDesigned] = useState(false);
+  const [excludedCandidates, setExcludedCandidates] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const assetTotalManwon = useMemo(() => Math.round(assetValuation.totalValueKrw / 10000), [assetValuation.totalValueKrw]);
@@ -58,6 +59,7 @@ function App() {
       if (!nextSession) {
         setAssetPortfolio(emptyAssetPortfolio);
         setAssetValuation(emptyAssetValuation);
+        setExcludedCandidates([]);
         setActiveTab("home");
       }
     });
@@ -88,6 +90,7 @@ function App() {
   }, [assetPortfolio]);
 
   const analyze = async () => {
+    setExcludedCandidates([]);
     setLoading(true);
     setRecommendationError(null);
 
@@ -105,10 +108,19 @@ function App() {
   };
 
   const resetGoal = () => {
+    setExcludedCandidates([]);
     setPortfolioDesigned(false);
     setRecommendedModel(null);
     setRecommendationError(null);
     setActiveTab("home");
+  };
+
+  const toggleCandidate = (candidateName: string) => {
+    setExcludedCandidates((current) =>
+      current.includes(candidateName)
+        ? current.filter((name) => name !== candidateName)
+        : [...current, candidateName],
+    );
   };
 
   const signOut = async () => {
@@ -138,6 +150,8 @@ function App() {
           inputs={inputsWithAssetTotal}
           model={model}
           assetValuation={assetValuation}
+          excludedCandidates={excludedCandidates}
+          onToggleCandidate={toggleCandidate}
           onRebalanceNow={() => setActiveTab("assets")}
           onReset={resetGoal}
         />

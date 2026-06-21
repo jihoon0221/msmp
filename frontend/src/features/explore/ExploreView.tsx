@@ -6,7 +6,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "../../components/ui/Card";
 import { getAssetPortfolioNewsInputs } from "../../lib/assetCalculations";
 import { requestRelatedNews } from "../../services/moneyPilotApi";
-import type { AssetPortfolio, FinancialInputs, PortfolioModel, RelatedNewsArticle } from "../../types/domain";
+import type {
+  AssetPortfolio,
+  FinancialInputs,
+  PortfolioModel,
+  RelatedNewsArticle,
+  RelatedNewsDigestSummary,
+} from "../../types/domain";
 
 type ExploreViewProps = {
   inputs: FinancialInputs;
@@ -24,6 +30,7 @@ const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 �
 
 export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps) {
   const [articles, setArticles] = useState<RelatedNewsArticle[]>([]);
+  const [digestSummary, setDigestSummary] = useState<RelatedNewsDigestSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
@@ -42,7 +49,7 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
       setError(null);
 
       try {
-        const nextArticles = await requestRelatedNews({
+        const newsResponse = await requestRelatedNews({
           assetNames,
           tickers,
           candidateQueries,
@@ -50,10 +57,12 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
           riskProfile: inputs.riskProfile,
         });
         if (ignore) return;
-        setArticles(nextArticles);
+        setArticles(newsResponse.articles);
+        setDigestSummary(newsResponse.digestSummary ?? []);
       } catch {
         if (ignore) return;
         setArticles([]);
+        setDigestSummary([]);
         setError(NEWS_ERROR_MESSAGE);
       } finally {
         if (!ignore) {
@@ -89,6 +98,22 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
         <p className="text-[9px] font-semibold text-blue-300">네이버 뉴스 검색 API에서 최신 관련 기사를 가져옵니다.</p>
       </div>
 
+      {digestSummary.length > 0 ? (
+        <div className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-lg">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-extrabold">보유 종목 AI 요약</h3>
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[8px] font-bold text-blue-100">Gemini</span>
+          </div>
+          <ul className="space-y-2">
+            {digestSummary.map((item) => (
+              <li key={item.ticker} className="rounded-xl bg-white/10 px-3 py-2">
+                <strong className="block text-[11px] text-white">{item.ticker}</strong>
+                <span className="text-[10px] leading-relaxed text-slate-300">{item.summary}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <Card>
         <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-slate-100">보유 종목 기반 관련 기사</h3>
