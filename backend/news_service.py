@@ -23,7 +23,7 @@ GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/
 RELATED_NEWS_CACHE_TTL_SECONDS = 2 * 60 * 60
 RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS = 10 * 60
 RELATED_NEWS_CACHE_MAX_ENTRIES = 64
-RELATED_NEWS_CACHE_VERSION = 7
+RELATED_NEWS_CACHE_VERSION = 8
 NEWS_MAX_HOLDING_TICKERS = 4
 NEWS_MAX_HOLDING_NAMES = 4
 NEWS_MAX_CANDIDATE_QUERIES = 3
@@ -33,6 +33,10 @@ DIGEST_MAX_GROUPS = 8
 DIGEST_MAX_ARTICLES_PER_GROUP = 1
 DIGEST_TITLE_MAX_LENGTH = 100
 DIGEST_SUMMARY_MAX_LENGTH = 140
+BRIEFING_TITLE_MAX_LENGTH = 24
+BRIEFING_OVERVIEW_MAX_LENGTH = 95
+BRIEFING_IMPACT_MAX_LENGTH = 95
+BRIEFING_WATCH_POINT_MAX_LENGTH = 36
 TICKER_KEYWORDS = {
     "NVDA": "엔비디아",
     "TSLA": "테슬라",
@@ -278,11 +282,14 @@ def _build_briefing_prompt(grouped_articles: dict[str, list[dict]], request: Rel
         "아래 뉴스들을 종목별로 따로 요약하지 말고, 사용자의 보유자산 전체 관점에서 PB 브리핑을 작성해라.\n"
         "투자 매수/매도 지시처럼 단정하지 말고, 뉴스가 포트폴리오에 줄 수 있는 영향과 확인할 점을 설명해라.\n"
         "한국어로 자연스럽고 간결하게 작성하라.\n"
+        "모든 문장은 완성된 문장으로 끝내라. 말이 끊기는 문장, 중간에서 끝나는 문장은 금지한다.\n"
         "마크다운 없이 JSON 객체만 응답해라.\n"
         f"투자성향: {risk_label}\n"
         f"목표: {goal_label}\n"
         f"관련 보유자산: {related_assets}\n"
-        '응답 형식: {"title":"20자 이내 제목","overview":"80~140자 핵심 이슈","portfolioImpact":"80~140자 포트폴리오 영향","watchPoints":["40자 이내 확인점 1","40자 이내 확인점 2"],"relatedAssets":["자산명"]}\n\n'
+        "길이 제한: title 20자 이내, overview 90자 이내 완성문 1문장, "
+        "portfolioImpact 90자 이내 완성문 1문장, watchPoints 각 35자 이내.\n"
+        '응답 형식: {"title":"20자 이내 제목","overview":"90자 이내 핵심 이슈 한 문장.","portfolioImpact":"90자 이내 포트폴리오 영향 한 문장.","watchPoints":["35자 이내 확인점","35자 이내 확인점"],"relatedAssets":["자산명"]}\n\n'
         + "\n\n".join(sections)
     )
 
@@ -312,15 +319,19 @@ def _parse_digest_briefing(
         parsed.get("watchPoints") or parsed.get("watch_points") or parsed.get("risks") or parsed.get("확인점"),
         fallback=[],
         max_items=3,
-        max_length=60,
+        max_length=BRIEFING_WATCH_POINT_MAX_LENGTH,
     )
     title = _truncate_display_text(
         str(parsed.get("title") or parsed.get("headline") or "보유자산 뉴스 브리핑"),
-        28,
+        BRIEFING_TITLE_MAX_LENGTH,
     )
-    overview = _clean_display_text(str(parsed.get("overview") or parsed.get("summary") or parsed.get("핵심") or ""))
-    portfolio_impact = _clean_display_text(
-        str(parsed.get("portfolioImpact") or parsed.get("portfolio_impact") or parsed.get("impact") or parsed.get("영향") or "")
+    overview = _fit_complete_sentence(
+        str(parsed.get("overview") or parsed.get("summary") or parsed.get("핵심") or ""),
+        BRIEFING_OVERVIEW_MAX_LENGTH,
+    )
+    portfolio_impact = _fit_complete_sentence(
+        str(parsed.get("portfolioImpact") or parsed.get("portfolio_impact") or parsed.get("impact") or parsed.get("영향") or ""),
+        BRIEFING_IMPACT_MAX_LENGTH,
     )
 
     if not overview or not portfolio_impact:
@@ -349,7 +360,7 @@ def _build_briefing_fallback(
     representative_article = next((articles[0] for articles in grouped_articles.values() if articles), None)
     representative_text = _truncate_display_text(
         (representative_article or {}).get("summary") or (representative_article or {}).get("title") or "",
-        120,
+        70,
     )
     asset_text = " · ".join(related_assets[:4])
     overview = f"{asset_text} 관련 뉴스가 포착됐습니다."
@@ -358,7 +369,7 @@ def _build_briefing_fallback(
 
     briefing = RelatedNewsDigestBriefing(
         title="보유자산 뉴스 브리핑",
-        overview=_clean_display_text(overview),
+        overview=_fit_complete_sentence(overview, BRIEFING_OVERVIEW_MAX_LENGTH),
         portfolioImpact="단일 기사 흐름만으로 방향성을 단정하기보다, 해당 자산의 실적·금리·환율 변화를 함께 확인하는 것이 좋습니다.",
         watchPoints=_default_watch_points(),
         relatedAssets=related_assets[:6],
@@ -406,6 +417,32 @@ def _truncate_display_text(value: str, max_length: int) -> str:
         truncated = truncated[:boundary].rstrip()
 
     return re.sub(r"\s?[A-Za-z0-9]{1,4}$", "", truncated).rstrip() or text[:max_length].rstrip()
+
+
+def _fit_complete_sentence(value: str, max_length: int) -> str:
+    text = _clean_display_text(value)
+    if len(text) <= max_length:
+        return _ensure_sentence_end(text)
+
+    candidate = text[:max_length].rstrip()
+    sentence_end = max(candidate.rfind("."), candidate.rfind("!"), candidate.rfind("?"), candidate.rfind("다."), candidate.rfind("요."))
+    if sentence_end >= max_length * 0.45:
+        return _ensure_sentence_end(candidate[: sentence_end + 1].rstrip())
+
+    boundary = max(candidate.rfind(" "), candidate.rfind(","), candidate.rfind("·"))
+    if boundary >= max_length * 0.55:
+        candidate = candidate[:boundary].rstrip()
+
+    return candidate.rstrip(" ,·-") + "..."
+
+
+def _ensure_sentence_end(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return text
+    if text.endswith((".", "!", "?", "다.", "요.", "니다.")):
+        return text
+    return text + "."
 
 
 def _clean_display_text(value: str) -> str:
