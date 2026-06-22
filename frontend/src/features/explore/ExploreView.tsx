@@ -2,7 +2,7 @@ import {
   FileText,
   RotateCw,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "../../components/ui/Card";
 import { getAssetPortfolioNewsInputs } from "../../lib/assetCalculations";
 import { requestRelatedNews } from "../../services/moneyPilotApi";
@@ -48,6 +48,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
+  const autoRetriedCacheKeys = useRef(new Set<string>());
   const newsInputs = useMemo(() => getAssetPortfolioNewsInputs(assetPortfolio), [assetPortfolio]);
   const { assetNames, tickers } = newsInputs;
   const candidateQueries = useMemo(
@@ -138,6 +139,20 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
     };
   }, [assetNames, assetPortfolioLoaded, cacheKey, candidateQueries, inputs.goalType, inputs.riskProfile, refreshCount, tickers]);
 
+  useEffect(() => {
+    const retryAfterSeconds = digestStatus?.retryAfterSeconds;
+    if (digestStatus?.status !== "failed" || !retryAfterSeconds || autoRetriedCacheKeys.current.has(cacheKey)) {
+      return;
+    }
+
+    autoRetriedCacheKeys.current.add(cacheKey);
+    const timeoutId = window.setTimeout(
+      () => setRefreshCount((value) => value + 1),
+      retryAfterSeconds * 1000 + NEWS_RETRY_CACHE_GRACE_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [cacheKey, digestStatus?.retryAfterSeconds, digestStatus?.status]);
+
   return (
     <main className="no-scrollbar flex-1 overflow-y-auto bg-slate-950 px-5 py-5 pb-24">
       <div className="mb-1 flex items-center justify-between">
@@ -205,6 +220,7 @@ export function ExploreView({ inputs, model, assetPortfolio, assetPortfolioLoade
             {digestStatus?.status !== "success" && digestStatus?.reason ? (
               <p className="break-words rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[9px] leading-relaxed text-amber-200">
                 기사 기반 브리핑 표시 중: {digestStatus.reason}
+                {digestStatus.retryAfterSeconds ? " 제한 해제 후 한 번 자동으로 다시 요청합니다." : ""}
               </p>
             ) : null}
           </div>
