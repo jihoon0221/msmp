@@ -24,7 +24,7 @@ GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/
 RELATED_NEWS_CACHE_TTL_SECONDS = 2 * 60 * 60
 RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS = 10 * 60
 RELATED_NEWS_CACHE_MAX_ENTRIES = 64
-RELATED_NEWS_CACHE_VERSION = 10
+RELATED_NEWS_CACHE_VERSION = 11
 RELATED_NEWS_RETRY_CACHE_GRACE_SECONDS = 5
 NEWS_MAX_HOLDING_TICKERS = 4
 NEWS_MAX_HOLDING_NAMES = 4
@@ -37,6 +37,7 @@ DIGEST_TITLE_MAX_LENGTH = 100
 DIGEST_SUMMARY_MAX_LENGTH = 140
 BRIEFING_TITLE_MAX_LENGTH = 20
 BRIEFING_OVERVIEW_MAX_LENGTH = 72
+BRIEFING_HIGHLIGHT_MAX_LENGTH = 64
 BRIEFING_IMPACT_MAX_LENGTH = 72
 BRIEFING_WATCH_POINT_MAX_LENGTH = 28
 TICKER_KEYWORDS = {
@@ -220,7 +221,8 @@ def generate_news_briefing(
                 len(articles),
                 provider_detail or "empty",
             )
-            return None, RelatedNewsDigestStatus(
+            fallback_briefing, _ = _build_briefing_fallback(grouped_articles, error_reason)
+            return fallback_briefing, RelatedNewsDigestStatus(
                 status="failed",
                 reason=error_reason,
                 retryAfterSeconds=retry_after_seconds,
@@ -245,9 +247,11 @@ def generate_news_briefing(
         )
     except requests.RequestException as exc:
         logger.warning("Gemini digest generation request failed", exc_info=True)
-        return None, RelatedNewsDigestStatus(
+        reason = f"Gemini API 연결에 실패했습니다. ({type(exc).__name__})"
+        fallback_briefing, _ = _build_briefing_fallback(grouped_articles, reason)
+        return fallback_briefing, RelatedNewsDigestStatus(
             status="failed",
-            reason=f"Gemini API 연결에 실패했습니다. ({type(exc).__name__})",
+            reason=reason,
         )
     except json.JSONDecodeError as exc:
         logger.warning("Gemini digest response was not valid JSON", exc_info=True)
@@ -307,9 +311,10 @@ def _build_briefing_prompt(grouped_articles: dict[str, list[dict]], request: Rel
         f"목표: {goal_label}\n"
         f"관련 보유자산: {related_assets}\n"
         "길이 제한: title 18자 이내, overview 65자 이내 완성문 1문장, "
+        "newsHighlights는 핵심 뉴스 3문장으로 각 55자 이내, "
         "portfolioImpact 65자 이내 완성문 1문장, watchPoints 각 25자 이내.\n"
         "말줄임표, 생략 표시, 중간에서 끊긴 표현은 절대 쓰지 마라.\n"
-        '응답 형식: {"title":"18자 이내 제목","overview":"65자 이내 핵심 이슈 한 문장.","portfolioImpact":"65자 이내 포트폴리오 영향 한 문장.","watchPoints":["25자 이내 확인점","25자 이내 확인점"],"relatedAssets":["자산명"]}\n\n'
+        '응답 형식: {"title":"18자 이내 제목","overview":"65자 이내 핵심 이슈 한 문장.","newsHighlights":["55자 이내 뉴스 문장","55자 이내 뉴스 문장","55자 이내 뉴스 문장"],"portfolioImpact":"65자 이내 포트폴리오 영향 한 문장.","watchPoints":["25자 이내 확인점","25자 이내 확인점"],"relatedAssets":["자산명"]}\n\n'
         + "\n\n".join(sections)
     )
 
@@ -341,6 +346,15 @@ def _parse_digest_briefing(
         max_items=3,
         max_length=BRIEFING_WATCH_POINT_MAX_LENGTH,
     )
+    news_highlights = _normalize_briefing_string_list(
+        parsed.get("newsHighlights") or parsed.get("news_highlights") or parsed.get("highlights") or parsed.get("주요뉴스"),
+        fallback=[],
+        max_items=3,
+        max_length=BRIEFING_HIGHLIGHT_MAX_LENGTH,
+    )
+    news_highlights = [_ensure_sentence_end(item) for item in news_highlights]
+    if not news_highlights:
+        news_highlights = _build_article_highlights(grouped_articles)
     title = _truncate_display_text(
         str(parsed.get("title") or parsed.get("headline") or "보유자산 뉴스 브리핑"),
         BRIEFING_TITLE_MAX_LENGTH,
@@ -363,6 +377,7 @@ def _parse_digest_briefing(
     return RelatedNewsDigestBriefing(
         title=title,
         overview=overview,
+        newsHighlights=news_highlights,
         portfolioImpact=portfolio_impact,
         watchPoints=watch_points,
         relatedAssets=related_assets,
@@ -377,17 +392,38 @@ def _build_briefing_fallback(
     if not related_assets:
         return None, RelatedNewsDigestStatus(status="failed", reason=reason)
 
-    asset_text = " · ".join(related_assets[:4])
-    overview = f"{asset_text} 관련 뉴스가 포착됐습니다."
-
     briefing = RelatedNewsDigestBriefing(
         title="보유자산 뉴스 브리핑",
-        overview=_fit_complete_sentence(overview, BRIEFING_OVERVIEW_MAX_LENGTH),
+        overview="수집된 기사에서 다음 주요 이슈가 확인됐습니다.",
+        newsHighlights=_build_article_highlights(grouped_articles),
         portfolioImpact="단일 기사보다 실적·금리·환율 흐름을 함께 확인하는 것이 좋습니다.",
         watchPoints=_default_watch_points(),
         relatedAssets=related_assets[:6],
     )
     return briefing, RelatedNewsDigestStatus(status="skipped", reason=reason)
+
+
+def _build_article_highlights(grouped_articles: dict[str, list[dict]]) -> list[str]:
+    highlights = []
+    seen = set()
+
+    for keyword, articles in grouped_articles.items():
+        article = next((item for item in articles if item), None)
+        title = _clean_display_text((article or {}).get("title") or "")
+        if not title:
+            continue
+
+        text = title if title.casefold().startswith(keyword.casefold()) else f"{keyword}: {title}"
+        text = _ensure_sentence_end(text)
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        highlights.append(text)
+        if len(highlights) >= 3:
+            break
+
+    return highlights
 
 
 def _normalize_briefing_string_list(value, fallback: list[str], max_items: int, max_length: int) -> list[str]:

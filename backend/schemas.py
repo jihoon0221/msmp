@@ -118,6 +118,7 @@ class RelatedNewsDigestStatus(BaseModel):
 class RelatedNewsDigestBriefing(BaseModel):
     title: str
     overview: str
+    newsHighlights: list[str] = Field(default_factory=list)
     portfolioImpact: str
     watchPoints: list[str] = Field(default_factory=list)
     relatedAssets: list[str] = Field(default_factory=list)

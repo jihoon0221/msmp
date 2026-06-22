@@ -69,6 +69,7 @@ export type RelatedNewsArticle = {
 export type RelatedNewsDigestBriefing = {
   title: string;
   overview: string;
+  newsHighlights?: string[];
   portfolioImpact: string;
   watchPoints: string[];
   relatedAssets: string[];
