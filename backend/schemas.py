@@ -86,6 +86,7 @@ class PortfolioRecommendationResponse(BaseModel):
 class RelatedNewsRequest(BaseModel):
     tickers: list[str] = Field(default_factory=list)
     assetNames: list[str] = Field(default_factory=list)
+    candidateQueries: list[str] = Field(default_factory=list)
     goalType: GoalType | None = None
     riskProfile: RiskProfile | None = None
     limitPerKeyword: int = Field(default=1, ge=1, le=5)
@@ -103,8 +104,28 @@ class RelatedNewsArticle(BaseModel):
     fetchedAt: str
 
 
+class RelatedNewsDigestStatus(BaseModel):
+    status: Literal["success", "skipped", "failed"]
+    reason: str | None = None
+
+
+class RelatedNewsDigestBriefing(BaseModel):
+    title: str
+    overview: str
+    portfolioImpact: str
+    watchPoints: list[str] = Field(default_factory=list)
+    relatedAssets: list[str] = Field(default_factory=list)
+
+
 class RelatedNewsResponse(BaseModel):
     articles: list[RelatedNewsArticle]
+    digestBriefing: RelatedNewsDigestBriefing | None = None
+    digestStatus: RelatedNewsDigestStatus = Field(
+        default_factory=lambda: RelatedNewsDigestStatus(
+            status="skipped",
+            reason="AI 브리핑을 아직 요청하지 않았습니다.",
+        )
+    )
 
 
 class ValuationStock(BaseModel):

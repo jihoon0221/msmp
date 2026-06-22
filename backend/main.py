@@ -55,7 +55,13 @@ def create_asset_valuation(request: AssetValuationRequest):
     response_model=RelatedNewsResponse,
 )
 def related_news_v1(request: RelatedNewsRequest):
-    if not request.tickers and not request.assetNames and not request.goalType and not request.riskProfile:
+    if (
+        not request.tickers
+        and not request.assetNames
+        and not request.candidateQueries
+        and not request.goalType
+        and not request.riskProfile
+    ):
         raise HTTPException(status_code=400, detail="검색 조건이 필요합니다.")
 
     try:

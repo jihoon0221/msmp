@@ -6,7 +6,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "../../components/ui/Card";
 import { getAssetPortfolioNewsInputs } from "../../lib/assetCalculations";
 import { requestRelatedNews } from "../../services/moneyPilotApi";
-import type { AssetPortfolio, FinancialInputs, PortfolioModel, RelatedNewsArticle } from "../../types/domain";
+import type {
+  AssetPortfolio,
+  FinancialInputs,
+  PortfolioModel,
+  RelatedNewsArticle,
+  RelatedNewsDigestBriefing,
+  RelatedNewsDigestStatus,
+} from "../../types/domain";
 
 type ExploreViewProps = {
   inputs: FinancialInputs;
@@ -24,6 +31,8 @@ const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 �
 
 export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps) {
   const [articles, setArticles] = useState<RelatedNewsArticle[]>([]);
+  const [digestBriefing, setDigestBriefing] = useState<RelatedNewsDigestBriefing | null>(null);
+  const [digestStatus, setDigestStatus] = useState<RelatedNewsDigestStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
@@ -33,6 +42,7 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
     () => model.allocations.flatMap((allocation) => allocation.candidates.map((candidate) => candidate.query)),
     [model],
   );
+  const digestBadge = digestStatus?.status === "success" ? "Gemini" : digestBriefing ? "기사 기반" : "Gemini";
 
   useEffect(() => {
     let ignore = false;
@@ -40,9 +50,11 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
     async function fetchRelatedNews() {
       setIsLoading(true);
       setError(null);
+      setDigestBriefing(null);
+      setDigestStatus(null);
 
       try {
-        const nextArticles = await requestRelatedNews({
+        const newsResponse = await requestRelatedNews({
           assetNames,
           tickers,
           candidateQueries,
@@ -50,10 +62,14 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
           riskProfile: inputs.riskProfile,
         });
         if (ignore) return;
-        setArticles(nextArticles);
+        setArticles(newsResponse.articles);
+        setDigestBriefing(newsResponse.digestBriefing ?? null);
+        setDigestStatus(newsResponse.digestStatus ?? null);
       } catch {
         if (ignore) return;
         setArticles([]);
+        setDigestBriefing(null);
+        setDigestStatus(null);
         setError(NEWS_ERROR_MESSAGE);
       } finally {
         if (!ignore) {
@@ -89,6 +105,47 @@ export function ExploreView({ inputs, model, assetPortfolio }: ExploreViewProps)
         <p className="text-[9px] font-semibold text-blue-300">네이버 뉴스 검색 API에서 최신 관련 기사를 가져옵니다.</p>
       </div>
 
+      <section className="mb-4 rounded-2xl bg-slate-900 p-4 text-white shadow-lg">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-xs font-extrabold">보유자산 AI 브리핑</h3>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[8px] font-bold text-blue-100">{digestBadge}</span>
+        </div>
+        {isLoading ? (
+          <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
+            브리핑을 불러오는 중입니다.
+          </p>
+        ) : digestBriefing ? (
+          <div className="space-y-3">
+            <div className="rounded-xl bg-white/10 px-3 py-2.5">
+              <strong className="mb-1 block text-[11px] text-white">{digestBriefing.title}</strong>
+              <p className="break-words text-[10px] leading-relaxed text-slate-300">{digestBriefing.overview}</p>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5">
+              <span className="mb-1 block text-[9px] font-extrabold text-blue-200">포트폴리오 영향</span>
+              <p className="break-words text-[10px] leading-relaxed text-slate-300">{digestBriefing.portfolioImpact}</p>
+            </div>
+            {digestBriefing.watchPoints.length > 0 ? (
+              <ul className="space-y-1.5">
+                {digestBriefing.watchPoints.map((point) => (
+                  <li key={point} className="break-words rounded-lg bg-white/10 px-3 py-1.5 text-[10px] leading-relaxed text-slate-300">
+                    {point}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {digestBriefing.relatedAssets.length > 0 ? (
+              <p className="break-words text-[9px] font-semibold text-slate-400">관련 자산: {digestBriefing.relatedAssets.join(" · ")}</p>
+            ) : null}
+            {digestStatus?.reason ? (
+              <p className="break-words text-[8px] font-semibold text-slate-500">{digestStatus.reason}</p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-slate-300">
+            {digestStatus?.reason ?? "브리핑할 보유자산 뉴스가 없습니다."}
+          </p>
+        )}
+      </section>
 
       <Card>
         <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-slate-100">보유 종목 기반 관련 기사</h3>

@@ -66,6 +66,25 @@ export type RelatedNewsArticle = {
   fetchedAt: string;
 };
 
+export type RelatedNewsDigestStatus = {
+  status: "success" | "skipped" | "failed";
+  reason?: string | null;
+};
+
+export type RelatedNewsDigestBriefing = {
+  title: string;
+  overview: string;
+  portfolioImpact: string;
+  watchPoints: string[];
+  relatedAssets: string[];
+};
+
+export type RelatedNewsResponse = {
+  articles: RelatedNewsArticle[];
+  digestBriefing?: RelatedNewsDigestBriefing | null;
+  digestStatus?: RelatedNewsDigestStatus;
+};
+
 export type StockAssetFilter = "all" | "kr_stock" | "us_stock" | "kr_etf" | "us_etf";
 
 export type Stock = {

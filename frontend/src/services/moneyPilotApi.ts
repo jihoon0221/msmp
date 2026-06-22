@@ -4,7 +4,7 @@ import type {
   FinancialInputs,
   PortfolioAllocation,
   PortfolioModel,
-  RelatedNewsArticle,
+  RelatedNewsResponse,
 } from "../types/domain";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -24,10 +24,6 @@ type PortfolioRecommendationResponse = {
     factors: string[];
   };
   allocations: PortfolioAllocation[];
-};
-
-type RelatedNewsResponse = {
-  articles: RelatedNewsArticle[];
 };
 
 export class MoneyPilotApiError extends Error {
@@ -75,16 +71,15 @@ export async function requestRelatedNews(params: {
   goalType: GoalType;
   riskProfile: RiskProfile;
   candidateQueries: string[];
-}): Promise<RelatedNewsArticle[]> {
-  const response = await postJson<RelatedNewsResponse>("/api/v1/news/related", {
-    assetNames: [...params.assetNames, ...params.candidateQueries],
+}): Promise<RelatedNewsResponse> {
+  return postJson<RelatedNewsResponse>("/api/v1/news/related", {
+    assetNames: params.assetNames,
+    candidateQueries: params.candidateQueries,
     tickers: params.tickers,
     goalType: params.goalType,
     riskProfile: params.riskProfile,
     limitPerKeyword: 1,
   });
-
-  return response.articles;
 }
 
 async function postJson<ResponseBody>(path: string, body: unknown): Promise<ResponseBody> {
