@@ -24,7 +24,7 @@ GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/
 RELATED_NEWS_CACHE_TTL_SECONDS = 2 * 60 * 60
 RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS = 10 * 60
 RELATED_NEWS_CACHE_MAX_ENTRIES = 64
-RELATED_NEWS_CACHE_VERSION = 11
+RELATED_NEWS_CACHE_VERSION = 12
 RELATED_NEWS_RETRY_CACHE_GRACE_SECONDS = 5
 NEWS_MAX_HOLDING_TICKERS = 4
 NEWS_MAX_HOLDING_NAMES = 4
@@ -40,6 +40,52 @@ BRIEFING_OVERVIEW_MAX_LENGTH = 72
 BRIEFING_HIGHLIGHT_MAX_LENGTH = 64
 BRIEFING_IMPACT_MAX_LENGTH = 72
 BRIEFING_WATCH_POINT_MAX_LENGTH = 28
+GEMINI_BRIEFING_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "18자 이내의 한국어 브리핑 제목",
+        },
+        "overview": {
+            "type": "string",
+            "description": "65자 이내의 완성된 한국어 핵심 이슈 한 문장",
+        },
+        "newsHighlights": {
+            "type": "array",
+            "description": "수집된 기사에 근거한 핵심 뉴스 문장 3개",
+            "items": {"type": "string"},
+            "minItems": 3,
+            "maxItems": 3,
+        },
+        "portfolioImpact": {
+            "type": "string",
+            "description": "65자 이내의 완성된 한국어 포트폴리오 영향 한 문장",
+        },
+        "watchPoints": {
+            "type": "array",
+            "description": "25자 이내의 확인점 2개",
+            "items": {"type": "string"},
+            "minItems": 2,
+            "maxItems": 2,
+        },
+        "relatedAssets": {
+            "type": "array",
+            "description": "브리핑과 관련된 보유자산 이름",
+            "items": {"type": "string"},
+            "minItems": 1,
+            "maxItems": 6,
+        },
+    },
+    "required": [
+        "title",
+        "overview",
+        "newsHighlights",
+        "portfolioImpact",
+        "watchPoints",
+        "relatedAssets",
+    ],
+}
 TICKER_KEYWORDS = {
     "NVDA": "엔비디아",
     "TSLA": "테슬라",
@@ -207,6 +253,8 @@ def generate_news_briefing(
                     "temperature": 0.2,
                     "maxOutputTokens": GEMINI_DIGEST_MAX_OUTPUT_TOKENS,
                     "responseMimeType": "application/json",
+                    "responseSchema": GEMINI_BRIEFING_RESPONSE_SCHEMA,
+                    "thinkingConfig": {"thinkingBudget": 0},
                 },
             },
             timeout=GEMINI_DIGEST_TIMEOUT_SECONDS,
