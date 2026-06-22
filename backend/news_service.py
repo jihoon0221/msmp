@@ -104,7 +104,7 @@ def _remove_html(value):
     return _clean_display_text(html.unescape(re.sub(r"<[^>]+>", "", value or "")))
 
 
-def _fetch_related_news(tickers: list[str], display: int = 1):
+def _fetch_related_news(keywords: list[str], display: int = 1):
     client_id = os.getenv("NAVER_CLIENT_ID")
     client_secret = os.getenv("NAVER_CLIENT_SECRET")
 
@@ -117,9 +117,9 @@ def _fetch_related_news(tickers: list[str], display: int = 1):
     }
     articles = []
 
-    for ticker in tickers:
+    for keyword in keywords:
         try:
-            query = TICKER_KEYWORDS.get(ticker, ticker)
+            query = TICKER_KEYWORDS.get(keyword, keyword)
             response = requests.get(
                 NAVER_NEWS_API_URL,
                 headers=headers,
@@ -139,7 +139,7 @@ def _fetch_related_news(tickers: list[str], display: int = 1):
             for item in items:
                 articles.append(
                     {
-                        "ticker": ticker,
+                        "ticker": keyword,
                         "source": "네이버 뉴스",
                         "title": _remove_html(item.get("title")),
                         "summary": _remove_html(item.get("description")),
@@ -169,13 +169,13 @@ def get_related_news_v1(request: RelatedNewsRequest) -> RelatedNewsResponse:
             ),
         )
 
-    legacy_articles = _fetch_related_news(keywords, display=request.limitPerKeyword)
+    fetched_news = _fetch_related_news(keywords, display=request.limitPerKeyword)
     fetched_at = datetime.now(UTC).isoformat()
-    legacy_article_items = legacy_articles.get("articles", [])
+    news_items = fetched_news.get("articles", [])
     holding_keywords = _build_holding_news_keywords(request)
     holding_articles = [
         article
-        for article in legacy_article_items
+        for article in news_items
         if article.get("ticker") in holding_keywords
     ]
     digest_briefing, digest_status = generate_news_briefing(holding_articles, request)
@@ -192,7 +192,7 @@ def get_related_news_v1(request: RelatedNewsRequest) -> RelatedNewsResponse:
             publishedAt=None,
             fetchedAt=fetched_at,
         )
-        for article in legacy_article_items
+        for article in news_items
     ]
 
     response = RelatedNewsResponse(
@@ -214,6 +214,14 @@ def generate_news_briefing(
             status="skipped",
             reason="보유 종목과 직접 매칭된 뉴스가 없습니다.",
         )
+
+    grouped_articles = _group_digest_articles(articles)
+    if not grouped_articles:
+        return None, RelatedNewsDigestStatus(
+            status="skipped",
+            reason="요약할 종목별 뉴스 그룹을 만들 수 없습니다.",
+        )
+
     if not api_key:
         logger.warning(
             "Gemini briefing skipped because GEMINI_API_KEY is not configured",
@@ -223,17 +231,11 @@ def generate_news_briefing(
                 "asset_name_count": len(request.assetNames),
             },
         )
-        return None, RelatedNewsDigestStatus(
+        reason = "GEMINI_API_KEY가 설정되지 않아 기사 기반 브리핑을 표시합니다."
+        fallback_briefing, _ = _build_briefing_fallback(grouped_articles, reason)
+        return fallback_briefing, RelatedNewsDigestStatus(
             status="skipped",
-            reason="GEMINI_API_KEY가 설정되지 않았습니다.",
-        )
-
-    grouped_articles = _group_digest_articles(articles)
-
-    if not grouped_articles:
-        return None, RelatedNewsDigestStatus(
-            status="skipped",
-            reason="요약할 종목별 뉴스 그룹을 만들 수 없습니다.",
+            reason=reason,
         )
 
     prompt = _build_briefing_prompt(grouped_articles, request)

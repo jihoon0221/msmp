@@ -36,10 +36,10 @@ supabase/functions/get-stock-price/  Stock price cache + provider boundary
 supabase/functions/get-exchange-rate/ USD/KRW exchange-rate cache boundary
 ```
 
-현재 `portfolio_ai_service.py`는 입력된 목표, 현재 자산, 월 소득/지출, 투자성향을 기준으로 `주식/ETF`, `예금/적금`, `채권` 추천비중을 계산합니다. 실제 AI 연동 전까지 이 파일이 추천비중 계산의 단일 책임 지점입니다.
+현재 `portfolio_ai_service.py`는 입력된 목표, 현재 자산, 월 소득/지출, 투자성향을 기준으로 `주식/ETF`, `예금/적금`, `채권` 추천비중을 계산하는 규칙 기반 엔진이며, 추천비중 계산의 단일 책임 지점입니다.
 `asset_valuation_service.py`는 프론트가 Supabase에서 읽은 보유자산을 받아 자산군별 현재 평가액, 수익률, 실제 비중을 계산합니다.
 `news_service.py`는 네이버 뉴스 API와 Gemini 요약을 FastAPI 내부에서 호출합니다. 같은 뉴스 요청은 FastAPI 프로세스 안에서 2시간 동안 캐시해서 탭 진입이나 새로고침 버튼 때문에 Naver/Gemini를 반복 호출하지 않게 합니다.
-가격 조회의 공식 경로는 FastAPI가 아니라 Supabase Edge Function입니다. 주식/ETF mock 현재가는 `get-stock-price`, USD 채권 평가용 USD/KRW 환율은 `get-exchange-rate`가 담당합니다.
+가격 조회의 공식 경로는 FastAPI가 아니라 Supabase Edge Function입니다. 국내 `.KS` 종목은 `get-stock-price`가 Naver Finance를 우선 조회하고, 해외·미지원 종목은 mock fallback을 사용합니다. USD 채권 평가용 USD/KRW 환율은 `get-exchange-rate`가 담당합니다.
 
 ## FastAPI Env
 
@@ -97,7 +97,7 @@ backend/supabase/functions/get-exchange-rate/
 
 `stocks_seed_400.csv` is imported into `public.stocks`; re-imports should upsert by `symbol`.
 
-`get-stock-price` currently uses mock prices by design. The frontend calls it only when a held stock has no price cache or the cached price is older than 24 hours. Complete the asset-management flow with mock data first; later replace `priceProvider.ts` with Twelve Data or EODHD and keep API keys in Supabase Secrets.
+`get-stock-price` fetches Naver Finance prices for domestic `.KS` symbols and falls back to deterministic mock prices on provider failure. Non-domestic symbols currently use mock prices. The frontend calls the function only when a held stock has no price cache or the cached price is older than 24 hours. Replace the non-domestic branch in `priceProvider.ts` with Twelve Data or EODHD and keep API keys in Supabase Secrets when real overseas prices are required.
 
 `get-exchange-rate` uses Frankfurter for USD/KRW, caches one row per currency pair and date in `public.exchange_rates`, and does not require an API key. The frontend uses historical rates to record a USD bond's purchase-date FX rate, then compares it against the latest cached rate. Latest USD/KRW is refreshed only when the cached row is older than 24 hours.
 

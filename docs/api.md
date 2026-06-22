@@ -5,11 +5,11 @@
 | 항목 | 내용 |
 | --- | --- |
 | 문서명 | Money Pilot API 계약서 |
-| 버전 | v0.4 |
-| 상태 | Draft |
-| 기준 브랜치 | `feature/portfolio-chart-labels` |
-| 기준일 | 2026-06-21 |
-| 대상 기능 | 추천 포트폴리오, 보유자산 입력, 보유자산 평가 계산, mock 현재가 조회, USD 환율 평가, 보유자산 기반 뉴스 조회 |
+| 버전 | v1.0 |
+| 상태 | Final |
+| 기준 브랜치 | `main` |
+| 기준일 | 2026-06-22 |
+| 대상 기능 | 추천 포트폴리오, 보유자산 입력, 보유자산 평가 계산, 국내 현재가 및 mock fallback 조회, USD 환율 평가, 보유자산 기반 뉴스·AI 브리핑 |
 
 ## 1. 결정 사항
 
@@ -49,7 +49,7 @@
 | Frankfurter API Key | 필요 없음 | 공개 endpoint라 계속 동작 |
 | `TWELVE_DATA_API_KEY` 또는 `EODHD_API_KEY` | mock 가격을 실제 시장 가격으로 바꾸는 시점 | 필요 없음. mock 가격으로 계속 동작 |
 | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | FastAPI 뉴스 탭에서 실제 네이버 뉴스 조회를 테스트할 때 | 뉴스 탭에 실패 메시지 표시 |
-| `GEMINI_API_KEY` | FastAPI 뉴스 탭에서 보유자산 AI 브리핑을 테스트할 때 | 기사 목록은 표시되고 AI 브리핑 카드만 비어 있음 |
+| `GEMINI_API_KEY` | FastAPI 뉴스 탭에서 보유자산 AI 브리핑을 테스트할 때 | 기사 목록과 기사 기반 fallback 브리핑은 표시되고 Gemini 생성만 생략됨 |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | 배포된 FastAPI가 Supabase access token을 Auth 서버로 검증할 때 | FastAPI 보호 endpoint가 `503` 반환 |
 | `SUPABASE_JWT_SECRET` | HS256 legacy JWT를 FastAPI가 직접 검증할 때 | 비대칭 JWT 검증에는 사용하지 않음 |
 | `API_ALLOWED_ORIGINS` | 로컬/배포 프론트에서 배포된 FastAPI를 호출할 때 | 브라우저 CORS 차단 |
@@ -489,7 +489,6 @@ type RelatedNewsRequest = {
 type RelatedNewsResponse = {
   articles: RelatedNewsArticle[];
   digestBriefing: RelatedNewsDigestBriefing | null;
-  digestSummary: RelatedNewsDigestSummary[]; // legacy fallback
   digestStatus: RelatedNewsDigestStatus;
 };
 
@@ -508,24 +507,20 @@ type RelatedNewsArticle = {
 type RelatedNewsDigestBriefing = {
   title: string;
   overview: string;
+  newsHighlights: string[];
   portfolioImpact: string;
   watchPoints: string[];
   relatedAssets: string[];
 };
 
-type RelatedNewsDigestSummary = {
-  ticker: string;
-  summary: string;
-};
-
 type RelatedNewsDigestStatus = {
   status: "success" | "skipped" | "failed";
   reason: string | null;
+  retryAfterSeconds?: number | null;
 };
 ```
 
-`digestBriefing`은 보유 종목을 각각 요약하지 않고, 관련 뉴스 전체를 사용해 보유자산 관점의 단일 브리핑을 반환한다. Gemini 요청은 뉴스 요청 조합별 2시간 FastAPI 캐시를 사용한다.
-`digestSummary`는 구버전 프론트 호환용 필드이며 신규 화면은 `digestBriefing`을 우선 사용한다.
+`digestBriefing`은 관련 뉴스 전체를 사용해 보유자산 관점의 단일 브리핑과 핵심 뉴스 최대 3개를 반환한다. Gemini는 JSON Schema 기반 structured output을 사용하며, 실패 시 수집 기사 제목으로 fallback 브리핑을 만든다. 같은 성공 요청은 2시간 동안 캐시하고, 429 응답은 Gemini의 `retryDelay`에 맞춰 짧게 캐시한다.
 
 ### 프론트 키워드 생성
 
@@ -533,7 +528,7 @@ type RelatedNewsDigestStatus = {
 | --- | --- |
 | `AssetPortfolio.stockAssets[].stock.symbol` | `tickers` |
 | 보유 주식/예금/채권 이름 | `assetNames` |
-| 추천 후보 `candidate.query` | `assetNames` |
+| 추천 후보 `candidate.query` | `candidateQueries` |
 | 목표 유형 | `goalType` |
 | 투자성향 | `riskProfile` |
 
@@ -590,9 +585,9 @@ type RelatedNewsDigestStatus = {
 | `stock_id` | `uuid` | `stocks.id` |
 | `price` | `numeric` | 현재가 |
 | `currency` | `text` | 가격 통화 |
-| `change_rate` | `numeric` | mock 등락률 |
+| `change_rate` | `numeric` | 조회된 등락률 또는 mock fallback 등락률 |
 | `fetched_at` | `timestamptz` | 조회 시각 |
-| `source` | `text` | `mock`, 추후 `twelve_data`, `eodhd` |
+| `source` | `text` | `naver`, `mock`, `mock-fallback`, 추후 `twelve_data`, `eodhd` |
 
 프론트는 해당 종목의 당일 최신 `stock_prices` row를 읽어 `StockAsset.latestPrice`와 `StockAsset.changeRate`로 매핑한다. 미국 주식/ETF는 `get-exchange-rate`로 최신 USD/KRW를 캐시한 뒤 `StockAsset.latestFxRate`로 붙이고, 화면에는 `USD (KRW)` 형태로 표시한다.
 
@@ -703,20 +698,19 @@ type GetStockPriceResponse = {
 };
 ```
 
-### Mock 가격 규칙
+### 가격 Provider 규칙
 
-현재 `priceProvider.ts`는 외부 API를 호출하지 않는다.
+현재 `priceProvider.ts`는 국내 `.KS` 종목에 대해 Naver realtime API를 우선 조회하고, 실패하면 Naver HTML을 시도한다. 해외 종목은 mock을 사용하며 Naver 조회 실패도 mock fallback으로 처리한다.
 
 | symbol | mock price |
 | --- | --- |
 | `005930.KS` | `73000` |
-| `000660.KS` | `220000` |
-| `AAPL` | `196` |
-| `MSFT` | `480` |
-| `SPY` | `590` |
-| `QQQ` | `520` |
+| `AAPL` | `195.64` |
+| `MSFT` | `430.16` |
+| `SPY` | `547.23` |
+| `QQQ` | `479.11` |
 
-위 목록에 없는 symbol은 symbol 문자열 hash로 deterministic mock 가격을 만든다. 따라서 seed에 있는 어떤 종목이든 가격 갱신 플로우를 테스트할 수 있다.
+위 값은 mock 또는 fallback 검증용 기준값이다. 목록에 없는 symbol은 기본 가격 `100`, 등락률 `0`을 사용해 가격 갱신 플로우 자체는 유지한다.
 
 ## 7.2 USD/KRW 환율 갱신
 
@@ -803,7 +797,7 @@ type PriceProviderResult = {
   price: number;
   currency: string;
   changeRate: number | null;
-  source: "mock" | "twelve_data" | "eodhd" | string;
+  source: "naver" | "mock" | "mock-fallback" | "twelve_data" | "eodhd" | string;
 };
 ```
 
@@ -811,7 +805,7 @@ type PriceProviderResult = {
 
 | 파일 | 수정 |
 | --- | --- |
-| `backend/supabase/functions/get-stock-price/priceProvider.ts` | mock 함수 대신 실제 Provider fetch 구현 |
+| `backend/supabase/functions/get-stock-price/priceProvider.ts` | 해외 mock 분기를 실제 Provider fetch로 교체 |
 | `backend/supabase/functions/get-stock-price/index.ts` | 보통 수정 없음 |
 | `frontend/src/services/assetRepository.ts` | 수정 없음 |
 | `frontend/src/features/assets/AssetsView.tsx` | 수정 없음 |
@@ -858,9 +852,9 @@ type PriceProviderResult = {
 
 | 제한 | 설명 |
 | --- | --- |
-| 가격 | mock 가격이다. 실시간 가격이 아니다. |
+| 가격 | 국내 `.KS`는 Naver Finance 우선이며 해외 주식/ETF는 mock이다. Naver 장애 시 국내 가격도 mock fallback을 사용한다. |
 | 환율 | KRW/USD만 지원한다. 다른 통화 자산은 KRW 평가액/실제비중에 포함하지 않는다. |
-| 추천 | 백엔드 규칙 기반 추천비중 계산이다. 실제 AI API는 아직 연결하지 않았다. |
+| 추천 | 백엔드 규칙 기반 추천비중 계산이며 추천 판단에는 AI API를 사용하지 않는다. Gemini는 뉴스 브리핑에만 사용한다. |
 | 뉴스 | 네이버 뉴스 API Key가 없으면 실패 메시지를 표시한다. |
 | 자산 API | 보유자산 CRUD는 FastAPI가 아니라 Supabase SDK를 직접 사용한다. |
 | 로그인 | Supabase Auth 세션이 없으면 자산 저장/조회가 실패한다. |

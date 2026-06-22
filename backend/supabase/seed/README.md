@@ -5,6 +5,6 @@
 Import it into `public.stocks` with Supabase Studio CSV import or an equivalent admin script.
 Use `symbol` as the upsert conflict key when re-importing.
 
-After importing, the app can search these rows immediately. Price refresh does not require a real market-data API key in the current phase because `get-stock-price` uses deterministic mock prices.
+After importing, the app can search these rows immediately. Domestic `.KS` prices use Naver Finance first, while non-domestic symbols and provider failures use deterministic mock prices. No market-data API key is required for the current implementation.
 
 The file is UTF-8 without BOM and contains 400 rows plus the header.
