@@ -11,6 +11,7 @@ import type {
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const inFlightPostRequests = new Map<string, Promise<unknown>>();
 
 type GoalType = FinancialInputs["goalType"];
 type RiskProfile = FinancialInputs["riskProfile"];
@@ -94,8 +95,8 @@ export async function requestRelatedNews(params: {
 }
 
 async function postJson<ResponseBody>(path: string, body: unknown): Promise<ResponseBody> {
-  const accessToken = await getAccessToken();
-  if (!accessToken) {
+  const authContext = await getAuthContext();
+  if (!authContext) {
     console.warn("MoneyPilot API request skipped because Supabase access token is missing.", {
       path,
       apiBaseUrl: API_BASE_URL,
@@ -104,11 +105,27 @@ async function postJson<ResponseBody>(path: string, body: unknown): Promise<Resp
     throw new MoneyPilotApiError("로그인 세션 토큰을 찾지 못했습니다. 다시 로그인해주세요.");
   }
 
+  const requestKey = `${authContext.userId}:${path}:${JSON.stringify(body)}`;
+  const pendingRequest = inFlightPostRequests.get(requestKey);
+  if (pendingRequest) return pendingRequest as Promise<ResponseBody>;
+
+  const request = executePostJson<ResponseBody>(path, body, authContext.accessToken);
+  inFlightPostRequests.set(requestKey, request);
+  const clearRequest = () => {
+    if (inFlightPostRequests.get(requestKey) === request) {
+      inFlightPostRequests.delete(requestKey);
+    }
+  };
+  request.then(clearRequest, clearRequest);
+  return request;
+}
+
+async function executePostJson<ResponseBody>(path: string, body: unknown, accessToken: string): Promise<ResponseBody> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
   });
@@ -120,14 +137,18 @@ async function postJson<ResponseBody>(path: string, body: unknown): Promise<Resp
   return (await response.json()) as ResponseBody;
 }
 
-async function getAccessToken() {
+async function getAuthContext() {
   if (!supabase) return null;
 
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  return session?.access_token ?? null;
+  if (!session?.access_token || !session.user.id) return null;
+  return {
+    accessToken: session.access_token,
+    userId: session.user.id,
+  };
 }
 
 async function readErrorMessage(response: Response) {

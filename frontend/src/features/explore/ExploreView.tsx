@@ -31,7 +31,8 @@ const riskLabels: Record<FinancialInputs["riskProfile"], string> = {
 const NEWS_ERROR_MESSAGE = "뉴스를 불러오지 못했습니다. 백엔드 서버 또는 API 키를 확인해주세요.";
 const NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const NEWS_SHORT_CACHE_TTL_MS = 10 * 60 * 1000;
-const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v14";
+const NEWS_RETRY_CACHE_GRACE_MS = 5 * 1000;
+const NEWS_CACHE_PREFIX = "moneyPilotRelatedNews:v15";
 const NEWS_CANDIDATES_PER_CATEGORY = 1;
 
 type CachedNewsPayload = {
@@ -252,10 +253,7 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
       return null;
     }
 
-    const cacheTtlMs =
-      parsed.digestStatus?.status === "failed" || parsedArticles.length === 0
-        ? NEWS_SHORT_CACHE_TTL_MS
-        : NEWS_CACHE_TTL_MS;
+    const cacheTtlMs = getNewsCacheTtlMs(parsed.digestStatus, parsedArticles.length);
     if (!parsed.cachedAt || Date.now() - parsed.cachedAt > cacheTtlMs) {
       localStorage.removeItem(cacheKey);
       return null;
@@ -270,6 +268,16 @@ function readCachedNews(cacheKey: string): CachedNewsPayload | null {
     localStorage.removeItem(cacheKey);
     return null;
   }
+}
+
+function getNewsCacheTtlMs(status: RelatedNewsDigestStatus | null, articleCount: number) {
+  if (status?.status === "failed") {
+    if (status.retryAfterSeconds) {
+      return Math.min(status.retryAfterSeconds * 1000 + NEWS_RETRY_CACHE_GRACE_MS, NEWS_SHORT_CACHE_TTL_MS);
+    }
+    return NEWS_SHORT_CACHE_TTL_MS;
+  }
+  return articleCount === 0 ? NEWS_SHORT_CACHE_TTL_MS : NEWS_CACHE_TTL_MS;
 }
 
 function isDigestBriefing(value: unknown): value is RelatedNewsDigestBriefing {

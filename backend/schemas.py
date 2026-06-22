@@ -112,6 +112,7 @@ class RelatedNewsArticle(BaseModel):
 class RelatedNewsDigestStatus(BaseModel):
     status: Literal["success", "skipped", "failed"]
     reason: str | None = None
+    retryAfterSeconds: int | None = Field(default=None, ge=1)
 
 
 class RelatedNewsDigestBriefing(BaseModel):

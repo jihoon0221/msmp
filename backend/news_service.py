@@ -1,6 +1,7 @@
 import html
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -23,7 +24,8 @@ GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/
 RELATED_NEWS_CACHE_TTL_SECONDS = 2 * 60 * 60
 RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS = 10 * 60
 RELATED_NEWS_CACHE_MAX_ENTRIES = 64
-RELATED_NEWS_CACHE_VERSION = 9
+RELATED_NEWS_CACHE_VERSION = 10
+RELATED_NEWS_RETRY_CACHE_GRACE_SECONDS = 5
 NEWS_MAX_HOLDING_TICKERS = 4
 NEWS_MAX_HOLDING_NAMES = 4
 NEWS_MAX_CANDIDATE_QUERIES = 3
@@ -209,18 +211,19 @@ def generate_news_briefing(
             timeout=GEMINI_DIGEST_TIMEOUT_SECONDS,
         )
         if not response.ok:
-            error_reason = _format_gemini_http_error(response)
+            error_reason, retry_after_seconds, provider_detail = _format_gemini_http_error(response)
             logger.warning(
-                "Gemini digest generation returned non-2xx response",
-                extra={
-                    "status_code": response.status_code,
-                    "reason": error_reason,
-                    "article_count": len(articles),
-                },
+                "Gemini digest generation returned non-2xx response: status=%s "
+                "retry_after_seconds=%s article_count=%s detail=%s",
+                response.status_code,
+                retry_after_seconds,
+                len(articles),
+                provider_detail or "empty",
             )
             return None, RelatedNewsDigestStatus(
                 status="failed",
                 reason=error_reason,
+                retryAfterSeconds=retry_after_seconds,
             )
 
         data = response.json()
@@ -497,8 +500,9 @@ def _strip_json_fence(value: str) -> str:
     return text.strip()
 
 
-def _format_gemini_http_error(response: requests.Response) -> str:
+def _format_gemini_http_error(response: requests.Response) -> tuple[str, int | None, str]:
     detail = ""
+    retry_after_seconds = None
     try:
         payload = response.json()
         error = payload.get("error") if isinstance(payload, dict) else None
@@ -506,19 +510,26 @@ def _format_gemini_http_error(response: requests.Response) -> str:
             message = str(error.get("message") or "").strip()
             status = str(error.get("status") or "").strip()
             detail = " / ".join(value for value in [status, message] if value)
+            retry_after_seconds = _extract_gemini_retry_after_seconds(error)
     except ValueError:
         detail = response.text[:160].strip()
 
     if _is_gemini_quota_error(response.status_code, detail):
+        retry_message = (
+            f"약 {retry_after_seconds}초 후 다시 시도해주세요."
+            if retry_after_seconds
+            else "잠시 후 다시 시도해주세요."
+        )
         return (
-            "Gemini 플랜의 요청 한도에 도달해 AI 브리핑을 생성하지 못했습니다. "
-            "잠시 후 다시 시도하거나 Gemini 사용량/결제 한도를 확인해주세요."
+            f"Gemini API의 단시간 요청 한도에 도달했습니다. {retry_message}",
+            retry_after_seconds,
+            detail,
         )
 
     if detail:
-        return f"Gemini API 오류 {response.status_code}: {detail}"
+        return f"Gemini API 오류 {response.status_code}: {detail}", None, detail
 
-    return f"Gemini API 오류 {response.status_code}: 응답 본문이 비어 있습니다."
+    return f"Gemini API 오류 {response.status_code}: 응답 본문이 비어 있습니다.", None, detail
 
 
 def _is_gemini_quota_error(status_code: int, detail: str) -> bool:
@@ -530,9 +541,28 @@ def _is_gemini_quota_error(status_code: int, detail: str) -> bool:
             "quota",
             "rate limit",
             "rate_limit",
-            "exceeded",
         ]
     )
+
+
+def _extract_gemini_retry_after_seconds(error: dict) -> int | None:
+    details = error.get("details")
+    if isinstance(details, list):
+        for item in details:
+            if not isinstance(item, dict):
+                continue
+            parsed_delay = _parse_retry_delay(item.get("retryDelay"))
+            if parsed_delay is not None:
+                return parsed_delay
+
+    return _parse_retry_delay(error.get("message"))
+
+
+def _parse_retry_delay(value: object) -> int | None:
+    match = re.search(r"(?:retry in\s+)?(\d+(?:\.\d+)?)s", str(value or ""), re.IGNORECASE)
+    if not match:
+        return None
+    return max(1, math.ceil(float(match.group(1))))
 
 
 def _build_related_news_cache_key(request: RelatedNewsRequest) -> str:
@@ -571,12 +601,22 @@ def _write_related_news_cache(cache_key: str, response: RelatedNewsResponse) -> 
         oldest_key = min(_RELATED_NEWS_CACHE, key=lambda key: _RELATED_NEWS_CACHE[key][0])
         _RELATED_NEWS_CACHE.pop(oldest_key, None)
 
-    ttl_seconds = (
-        RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS
-        if response.digestStatus.status == "failed" or not response.articles
-        else RELATED_NEWS_CACHE_TTL_SECONDS
-    )
+    ttl_seconds = _get_related_news_cache_ttl(response)
     _RELATED_NEWS_CACHE[cache_key] = (time.time(), ttl_seconds, response)
+
+
+def _get_related_news_cache_ttl(response: RelatedNewsResponse) -> int:
+    if response.digestStatus.status == "failed":
+        retry_after_seconds = response.digestStatus.retryAfterSeconds
+        if retry_after_seconds:
+            return min(
+                retry_after_seconds + RELATED_NEWS_RETRY_CACHE_GRACE_SECONDS,
+                RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS,
+            )
+        return RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS
+    if not response.articles:
+        return RELATED_NEWS_FAILURE_CACHE_TTL_SECONDS
+    return RELATED_NEWS_CACHE_TTL_SECONDS
 
 
 def _prune_expired_related_news_cache() -> None:
